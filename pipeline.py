@@ -1,4 +1,4 @@
-"""Extraction pipeline v1: phase 1 (extract) -> 2A (decode, explore) -> 2B (normalize) -> 2C (storage_locations).
+"""SCGE extraction pipeline v1: phase 1 (extract) -> 2A (decode, explore) -> 2B (normalize) -> 2C (storage_locations).
 
 Phase 1 is the only step that reads Data.p4k (whitelist, 15 GB cap); phases 2x read raw_extraction/ only.
 Each step skips work already done for the current game build; a new build gets its own folders.
