@@ -52,6 +52,15 @@ def test_wikelo_orders_cover_templates_and_overrides():
     ]
 
 
+def test_reference_does_not_erase_inline_definition():
+    definition = {"_RecordId_": "t1", "_RecordName_": "StarMapObjectType.t1", "_Type_": "StarMapObjectType", "name": "Manmade"}
+    reference = {"_RecordPath_": "file://./starmap/starmapobjecttypes.json", "_RecordName_": "StarMapObjectType.t1", "_RecordId_": "t1"}
+    scan = explore.Scan()
+    scan.add("starmap/starmapobjecttypes.json", {"_RecordId_": "f1", "_RecordName_": "Types.f1", "_RecordValue_": {"_Type_": "Types", "types": [definition]}})
+    scan.add("starmap/starmarine/oxygendispenser.json", {"_RecordId_": "f2", "_RecordName_": "StarMapObject.f2", "_RecordValue_": {"_Type_": "Other", "type": reference}})
+    assert scan.by_guid["t1"]["label"] == "Manmade"
+
+
 def test_walk_is_bounded():
     deep = current = {}
     for _ in range(explore.MAX_WALK_DEPTH + 5):

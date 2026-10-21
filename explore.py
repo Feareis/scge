@@ -178,7 +178,8 @@ class Scan:
             self.add_commodities(group.get("groups") or [], path)
 
     def visit(self, kind, relpath, node):
-        if "_RecordId_" in node and "_RecordName_" in node:
+        # A reference ({_RecordPath_, _RecordName_, _RecordId_}, no _Type_) must not overwrite the record it points to.
+        if "_RecordId_" in node and "_RecordName_" in node and "_Type_" in node:
             label = node.get("name") if isinstance(node.get("name"), str) else None
             self.by_guid[node["_RecordId_"]] = {
                 "name": node["_RecordName_"],
