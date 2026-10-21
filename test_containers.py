@@ -6,6 +6,7 @@ import zipfile
 from pathlib import Path
 
 import containers
+import extract
 import explore_storage
 
 CONTAINER_XML = b"""<ObjectContainer name="base"><ChildObjectContainers>
@@ -51,7 +52,7 @@ def test_readers():
 
 
 def test_path_regex():
-    pattern = re.compile(containers.path_regex(["Data/PU/a_{B1}.socpak", "Data/PU/c.d+e.socpak"]))
+    pattern = re.compile(extract.path_regex(["Data/PU/a_{B1}.socpak", "Data/PU/c.d+e.socpak"]))
     assert pattern.match("Data\\PU\\A_{b1}.socpak") and pattern.match("data/pu/c.d+e.socpak")
     assert not pattern.match("Data\\PU\\a_{B1}.socpak.bak") and not pattern.match("Data\\PU\\cxd+e.socpak")
 

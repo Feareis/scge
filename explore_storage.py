@@ -2,9 +2,9 @@
 
 Sources: DataCore amenities (data_json/<build>/raw/) and object containers (.socpak) read from Data.p4k.
 Writes data_json/<build>/bonus/exploration_stockage.md; containers are cached by containers.py.
-Usage: python explore_storage.py --dry-run          show what would be read from Data.p4k, write nothing
-       python explore_storage.py --roots-only       extract the system-layer containers only
-       python explore_storage.py                    system layer + the sample locations' containers + report
+Since the v1 pipeline, phase 1 extracts every container: this tool only reads them (--dry-run / --roots-only
+kept from the bonus run: they now stop after the plan / after indexing the system layer).
+Usage: python explore_storage.py [--dry-run | --roots-only]
 """
 
 import argparse
@@ -74,7 +74,6 @@ LIMITS = (
 def parse_args(argv):
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--build", help="build folder in data_json/; default: latest exported build")
-    parser.add_argument("--game-dir", type=Path, default=Path(r"D:\Roberts Space Industries\StarCitizen"))
     parser.add_argument("--channel", default="LIVE")
     parser.add_argument("--dry-run", action="store_true", help="list containers and sizes; extract nothing")
     parser.add_argument("--roots-only", action="store_true", help="stop after the system-layer containers")
@@ -106,7 +105,7 @@ def walk_containers(store, start, guid_by_class):
         frontier = {lower for lower in frontier if lower in store.by_lower} - seen
         if not frontier:
             return seen, hits, absent
-        store.extract(frontier)
+        store.require(frontier)
         seen |= frontier
         following = set()
         for lower in frontier:
@@ -329,7 +328,7 @@ def main(argv):
     unknown = [guid for guid in SAMPLE + TABLE_EXTRA if guid not in places]
     if unknown:
         raise ExtractionError(f"GUID de lieu inconnus dans raw/: {unknown}")
-    store = open_store(args.game_dir, args.channel, out_dir.name)
+    store = open_store(args.channel, out_dir.name)
     if not set(HANGAR_PROBES) <= set(store.by_lower):
         raise ExtractionError(f"Hangars sondes absents du p4k: {sorted(set(HANGAR_PROBES) - set(store.by_lower))}")
     roots = {lower for lower in store.by_lower if ROOT_CONTAINER.match(lower)}
@@ -342,7 +341,7 @@ def main(argv):
         print("Dry-run: rien n'a ete extrait.")
         return 0
     if not roots_ready:
-        store.extract(roots)
+        store.require(roots)
         located = index_locations({lower: container_root(store.local(lower)) for lower in roots}, set(places))
     if args.roots_only:
         print(f"Couche systeme extraite; {len(located)} lieux relies. Relance --dry-run pour voir l'echantillon.")

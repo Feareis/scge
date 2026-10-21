@@ -70,12 +70,19 @@ def test_roll_up_merges_sub_places_into_the_listed_place():
     # sorted by system, planet, moon, name: places on the planet itself come before its moons
     assert [place["name"] for place in places] == ["Lorville", "Kudre Ore", "Narena's Rest"]
     lorville, kudre, narena = places
-    assert (lorville["storage"], lorville["subLocations"]) == ("both", ["Maria Pure of Heart"])
+    assert (lorville["storage"], lorville["subLocations"]) == ("both", [{"guid": "h", "name": "Maria Pure of Heart"}])
     assert lorville["proof"]["itemInventory"] == [{"file": "hosp", "subLocation": "Maria Pure of Heart"}]
     assert (lorville["system"], lorville["planet"], lorville["moon"]) == ("Stanton", "Hurston", None)
     assert (narena["storage"], narena["moon"], narena["path"]) == ("itemInventory", "Bloom", "Stanton > Hurston > Bloom > Narena's Rest")
     assert kudre["storage"] is None and sl.is_unknown(kudre)
     assert "ECHEC" not in "\n".join(sl.check_rows(places, CATALOG))
+
+    systems, bodies, locations = sl.split_storage([lorville, narena], CATALOG)  # only places that store
+    assert systems == [{"guid": "s", "name": "Stanton"}]
+    assert bodies == [{"guid": "m", "name": "Bloom", "type": "Moon", "systemGuid": "s", "parentGuid": "p"},
+                      {"guid": "p", "name": "Hurston", "type": "Planet", "systemGuid": "s", "parentGuid": "s"}]
+    assert [(row["guid"], row["systemGuid"], row["bodyGuid"]) for row in locations] == [("lz", "s", "p"), ("o", "s", "m")]
+    assert "planet" not in locations[0] and locations[0]["proof"] == lorville["proof"]
 
 
 def test_checks_catch_missing_and_unproven():

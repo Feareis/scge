@@ -1,9 +1,13 @@
-"""Full extraction pipeline: phase 1 (extract) -> 2A (decode) -> 2B (normalize) -> 2C (storage_locations).
+"""Extraction pipeline v1: phase 1 (extract) -> 2A (decode, explore) -> 2B (normalize) -> 2C (storage_locations).
 
+Phase 1 is the only step that reads Data.p4k (whitelist, 15 GB cap); phases 2x read extraction_brute/ only.
 Each step skips work already done for the current game build; a new build gets its own folders.
-Outputs in data_json/<build>/: catalog.json, wikelo.json, report.md, storage_locations.json, storage_report.md,
-pipeline_manifest.json (SHA-256 of the outputs).
-Usage: python pipeline.py --dry-run    phase 1 and 2C dry-runs (2C only if this build is already decoded)
+Outputs in data_json/<build>/ (one GUID per record everywhere):
+  raw/, exploration.md                          2A
+  catalog.json + lists/{items,commodities,manufacturers,locations}.json, wikelo.json, report.md     2B
+  storage_locations.json + storage/{systems,bodies,locations}.json, storage_report.md               2C
+  pipeline_manifest.json                        SHA-256 of every JSON output
+Usage: python pipeline.py --dry-run    phase 1 dry-run: files, sizes and output folder; nothing written
        python pipeline.py [--force]    run every step; --force redoes phases 1 and 2A
 """
 
@@ -14,12 +18,16 @@ import sys
 from pathlib import Path
 
 import decode
+import explore
 import extract
 import normalize
 import storage_locations
 from extract import ExtractionError, read_build, sha256_of
 
-OUTPUTS = ("catalog.json", "wikelo.json", "storage_locations.json")
+OUTPUTS = (
+    "catalog.json", "lists/items.json", "lists/commodities.json", "lists/manufacturers.json", "lists/locations.json",
+    "wikelo.json", "storage_locations.json", "storage/systems.json", "storage/bodies.json", "storage/locations.json",
+)
 
 
 def parse_args(argv):
@@ -38,8 +46,9 @@ def steps(args, build):
     return [
         ("phase 1 - extract", extract, game + force),
         ("phase 2A - decode", decode, ["--channel", args.channel, "--build", build] + force),
+        ("phase 2A - explore", explore, ["--build", build]),
         ("phase 2B - normalize", normalize, ["--build", build]),
-        ("phase 2C - storage_locations", storage_locations, game + ["--build", build]),
+        ("phase 2C - storage_locations", storage_locations, ["--build", build]),
     ]
 
 
@@ -70,11 +79,7 @@ def main(argv):
     plan = steps(args, build)
     if args.dry_run:
         run_step(plan[0][0] + " (dry-run)", extract, plan[0][2] + ["--dry-run"])
-        if decoded:
-            run_step(plan[3][0] + " (dry-run)", storage_locations, plan[3][2] + ["--dry-run"])
-        else:
-            print("\nPhase 2C: dry-run possible apres les phases 1-2B de ce build.")
-        print("\nDry-run: rien n'a ete ecrit (2A/2B ne lisent pas Data.p4k).")
+        print("\nDry-run: rien n'a ete ecrit; les phases 2x ne lisent pas Data.p4k.")
         return 0
     for name, module, step_argv in plan:
         run_step(name, module, step_argv)

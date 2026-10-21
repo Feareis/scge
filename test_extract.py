@@ -46,6 +46,18 @@ def test_build_version_must_be_path_safe():
         expect_error(extract.read_build, Path(folder))
 
 
+def test_build_is_done_only_with_the_current_whitelist():
+    with tempfile.TemporaryDirectory() as folder:
+        build_dir = Path(folder)
+        assert not extract.is_done(build_dir)
+        (build_dir / "manifest.json").write_text(json.dumps({"files": []}))  # phase 1 manifest from before v1
+        assert not extract.is_done(build_dir)
+        (build_dir / "manifest.json").write_text(json.dumps({"whitelist": list(extract.WHITELIST)}))
+        assert extract.is_done(build_dir)
+        (build_dir / "manifest.json").write_text("{broken")
+        expect_error(extract.is_done, build_dir)
+
+
 def test_messages_are_ascii():
     # Accents print garbled in Git Bash consoles, so the script stays pure ASCII.
     Path(extract.__file__).read_text(encoding="utf-8").encode("ascii")

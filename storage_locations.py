@@ -1,11 +1,13 @@
-"""Phase 2C: write data_json/<build>/storage_locations.json and storage_report.md - places with an inventory.
+"""Phase 2C: write data_json/<build>/storage_locations.json, storage/*.json and storage_report.md - places with an inventory.
+
+storage/ splits storage_locations.json into systems.json, bodies.json (planets, moons) and locations.json, linked by
+the catalog GUIDs (systemGuid, parentGuid, bodyGuid).
 
 Listed place = catalog place whose parent is a star, planet or moon; places under it are sub-places counted for it.
 Inventory = an item bank (found in its containers) or freight (DataCore amenity or a freight console in its
 containers, hangars included). ExtractOnly kiosks (withdraw only) do not count; unknown places are left out.
-Containers come from Data.p4k through the containers.py whitelist, after a dry-run.
-Usage: python storage_locations.py --dry-run     show what would be extracted, write nothing
-       python storage_locations.py               extract the whitelist, then write the JSON and the report
+Like phases 2A/2B it never reads Data.p4k: containers come from the phase 1 extraction (extraction_brute/).
+Usage: python storage_locations.py [--build 4.10.197.2878]   (default: latest build with raw_manifest.json)
 """
 
 import argparse
@@ -13,7 +15,6 @@ import collections
 import json
 import sys
 import zipfile
-from pathlib import Path
 
 import explore
 import containers as storage
@@ -29,14 +30,14 @@ RULE = ("listed place = catalog place whose parent is a star, planet or moon; su
         "inventory = itemInventory (item bank) or freight, sub-places and hangars included")
 MAX_XML_NODES = 5_000_000
 EXTRACT_ONLY = "_ExtractOnly"  # withdraw-only freight kiosk: not a storage (user rule)
+STORAGE_DIR = "storage"
+LOCATION_FIELDS = ("guid", "name", "type", "systemGuid", "path", "storage", "itemInventory", "freight",
+                   "subLocations", "proof")
 
 
 def parse_args(argv):
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--build", help="build folder in data_json/; default: latest exported build")
-    parser.add_argument("--game-dir", type=Path, default=Path(r"D:\Roberts Space Industries\StarCitizen"))
-    parser.add_argument("--channel", default="LIVE")
-    parser.add_argument("--dry-run", action="store_true", help="list containers and sizes; extract nothing")
     return parser.parse_args(argv)
 
 
@@ -207,11 +208,13 @@ def merged_value(values):
 
 
 def frame(row, by_guid):
-    """System / planet / moon names framing a listed place, from its catalog ancestors."""
+    """System / planet / moon framing a listed place (names and catalog GUIDs), from its catalog ancestors."""
     rows = lineage(row, by_guid)
-    first = {kind: next((item["name"] for item in rows[:-1] if item["type"] == kind), None) for kind in BODIES}
-    return {"system": first["Star"] or first["SolarSystem"], "planet": first["Planet"], "moon": first["Moon"],
-            "path": " > ".join(item["name"] for item in rows)}
+    first = {kind: next((item for item in rows[:-1] if item["type"] == kind), None) for kind in BODIES}
+    levels = {"system": first["Star"] or first["SolarSystem"], "planet": first["Planet"], "moon": first["Moon"]}
+    named = {level: item["name"] if item else None for level, item in levels.items()}
+    guids = {f"{level}Guid": item["guid"] if item else None for level, item in levels.items()}
+    return named | guids | {"path": " > ".join(item["name"] for item in rows)}
 
 
 def roll_up(entries, catalog):
@@ -231,9 +234,36 @@ def roll_up(entries, catalog):
         storage_kind = "both" if both else next((kind for kind in KINDS if values[kind] is True), None)
         places.append({"guid": guid, "name": row["name"], "type": row["type"], **frame(row, by_guid),
                        "storage": storage_kind, **values,
-                       "subLocations": sorted(member["name"] for member in members if member["guid"] != guid),
+                       "subLocations": sorted(({"guid": member["guid"], "name": member["name"]}
+                                               for member in members if member["guid"] != guid), key=lambda sub: sub["name"]),
                        "proof": proof})
     return sorted(places, key=sort_key)
+
+
+def split_storage(places, catalog):
+    """storage/: systems, bodies (planets, moons) and locations, linked by catalog GUID; only what storing places use."""
+    by_guid = {row["guid"]: row for row in catalog["locations"]}
+    systems, bodies, locations = {}, {}, []
+    for place in places:
+        for item in lineage(by_guid[place["guid"]], by_guid)[:-1]:
+            if item["type"] in ("Star", "SolarSystem"):
+                systems[item["guid"]] = {"guid": item["guid"], "name": item["name"]}
+            elif item["type"] in ("Planet", "Moon"):
+                bodies[item["guid"]] = {"guid": item["guid"], "name": item["name"], "type": item["type"],
+                                        "systemGuid": place["systemGuid"], "parentGuid": item["parent"]}
+        locations.append({key: place[key] for key in LOCATION_FIELDS} | {"bodyGuid": place["moonGuid"] or place["planetGuid"]})
+    return sorted(systems.values(), key=name_key), sorted(bodies.values(), key=name_key), locations
+
+
+def name_key(row):
+    return row["name"], row["guid"]
+
+
+def write_storage_lists(folder, header, lists):
+    folder.mkdir(exist_ok=True)
+    for key, rows in zip(("systems", "bodies", "locations"), lists, strict=True):
+        payload = {"header": header, "rule": RULE, key: rows} if key == "locations" else {"header": header, key: rows}
+        (folder / f"{key}.json").write_text(json.dumps(payload, indent=1) + "\n", encoding="utf-8")
 
 
 def sort_key(place):
@@ -347,16 +377,9 @@ def main(argv):
     texts = explore.load_localization(EXTRACTION_ROOT / raw_manifest["channel"] / out_dir.name / explore.LOCALIZATION)
     catalog = json.loads((out_dir / "catalog.json").read_text(encoding="utf-8"))
     catalog_guids = {row["guid"] for row in catalog["locations"]}
-    store = storage.open_store(args.game_dir, args.channel, out_dir.name)
-    missing = [lower for lower in store.by_lower if not store.present(lower)]
-    print(f"Liste blanche `{storage.WHITELIST}`: {len(store.by_lower):,} conteneurs, {storage.mb(store.size(store.by_lower))}")
-    print(f"Deja extraits: {len(store.by_lower) - len(missing):,}; a extraire: {len(missing):,}, {storage.mb(store.size(missing))}")
-    print(f"Sortie: {store.dest}")
-    if args.dry_run:
-        print("Dry-run: rien n'a ete extrait.")
-        return 0
-
-    store.extract(missing)
+    store = storage.open_store(raw_manifest["channel"], out_dir.name)
+    store.require(store.by_lower)
+    print(f"Conteneurs de phase 1: {len(store.by_lower):,}, {storage.mb(store.size(store.by_lower))} ({store.dest})")
     consoles = {guid: console for guid, console in storage.load_consoles(records_root).items()
                 if not console[1].endswith(EXTRACT_ONLY)}
     guid_by_class = {name.lower(): guid for guid, (_, name, _) in consoles.items()}
@@ -369,6 +392,7 @@ def main(argv):
     storing = [place for place in places if stores(place)]
     payload = {"header": catalog["header"], "rule": RULE, "locations": storing}
     (out_dir / "storage_locations.json").write_text(json.dumps(payload, indent=1) + "\n", encoding="utf-8")
+    write_storage_lists(out_dir / STORAGE_DIR, catalog["header"], split_storage(storing, catalog))
     report = render_report(places, orphan_consoles(ctx, claimed), catalog, no_editor)
     (out_dir / "storage_report.md").write_text(report, encoding="utf-8")
     print(f"OK {len(storing)} lieux avec inventaire / {len(places)} listes -> {out_dir / 'storage_locations.json'}; "

@@ -1,8 +1,7 @@
-"""Object containers (.socpak) read from Data.p4k, and the DataCore records that describe places and consoles.
+"""Object containers (.socpak) extracted by phase 1, and the DataCore records that describe places and consoles.
 
-Shared by storage_locations.py (pipeline step) and explore_storage.py (exploration tool).
-Containers are cached under extraction_brute/<channel>/<build>/Data/ObjectContainers/, next to the phase 1 files;
-`extract.py --force` wipes that build folder, cache included (it is re-extracted on the next run).
+Shared by storage_locations.py (phase 2C) and explore_storage.py (exploration tool). Nothing here reads Data.p4k:
+containers are read from extraction_brute/<channel>/<build>/Data/ObjectContainers/, as listed in the phase 1 manifest.
 """
 
 import collections
@@ -13,43 +12,20 @@ import zipfile
 
 import explore
 from decode import EXTRACTION_ROOT
-from extract import (
-    EXTRACT_TIMEOUT_S,
-    LIST_TIMEOUT_S,
-    STARBREAKER,
-    ExtractionError,
-    check_budget,
-    ensure_outside_game_dir,
-    free_space,
-    parse_listing,
-    read_build,
-    run_tool,
-    warn_if_game_running,
-)
+from extract import ExtractionError
 
-# Nothing outside this pattern leaves the p4k; it is checked again on every file written.
-WHITELIST = "Data/ObjectContainers/PU/**/*.socpak"
+WHITELIST = "Data/ObjectContainers/PU/**/*.socpak"  # the phase 1 whitelist entry for containers
 WHITELIST_PREFIX = "data/objectcontainers/pu/"
 CACHE_SUBDIR = "Data/ObjectContainers"
 # The system layer (systems, planets, moons, Lagrange points) is where <Child starMapRecord> links places to containers.
 ROOT_CONTAINER = re.compile(r"^data/objectcontainers/pu/system/.+\.socpak$")
 FREIGHT_AMENITIES = ("Commodity Trading - Freight Elevator", "Commodity Trading - Loading Dock")
 FREIGHT_ENTITY_DIR = "entities/scitem/freightelevators/"
-BATCH_SIZE = 150  # paths per starbreaker call; keeps the regex far below the Windows command-line limit
 MAX_PARENT_DEPTH = 50
-REGEX_META = set(".+*?()|[]{}^$")
 
 
 def mb(size):
     return f"{size / 1024**2:.1f} Mo"
-
-
-def path_regex(paths):
-    """Exact, case-insensitive match of p4k paths; the p4k stores backslashes, callers pass slashes."""
-    separator = "[\\\\/]"
-    escaped = ("".join(separator if char in "/\\" else ("\\" + char if char in REGEX_META else char) for char in path)
-               for path in paths)
-    return "(?i)^(?:" + "|".join(escaped) + ")$"
 
 
 def read_member(archive, info):
@@ -90,17 +66,19 @@ def console_hits(socpak, guid_by_class):
     return hits
 
 
-class P4kContainers:
-    """The whitelisted part of Data.p4k, extracted on demand under `dest` (p4k paths mirrored)."""
+class ContainerCache:
+    """The containers phase 1 extracted for one build, keyed by lower-cased p4k path."""
 
-    def __init__(self, p4k, dest):
-        self.p4k, self.dest = p4k, dest
-        stdout = run_tool([str(STARBREAKER), "p4k", "list", "--p4k", str(p4k), "--filter", WHITELIST], LIST_TIMEOUT_S)
-        self.sizes = parse_listing(stdout)
+    def __init__(self, build_dir):
+        manifest_path = build_dir / "manifest.json"
+        if not manifest_path.is_file():
+            raise ExtractionError(f"Phase 1 absente ({manifest_path}): lance extract.py d'abord")
+        files = json.loads(manifest_path.read_text(encoding="utf-8"))["files"]
+        self.dest = build_dir
+        self.sizes = {entry["path"]: entry["size"] for entry in files if entry["path"].lower().startswith(WHITELIST_PREFIX)}
         if not self.sizes:
-            raise ExtractionError(f"Aucune entree du p4k ne correspond a {WHITELIST}")
+            raise ExtractionError(f"{manifest_path} ne liste aucun conteneur: relance extract.py (liste blanche a jour)")
         self.by_lower = {path.lower(): path for path in self.sizes}
-        self.written = 0
 
     def local(self, lower):
         return self.dest / self.by_lower[lower]
@@ -112,43 +90,15 @@ class P4kContainers:
     def size(self, lowers):
         return sum(self.sizes[self.by_lower[lower]] for lower in lowers)
 
-    def extract(self, lowers):
+    def require(self, lowers):
+        """Every container is extracted by phase 1; a missing or truncated one means the cache is broken."""
         missing = sorted(lower for lower in lowers if not self.present(lower))
-        check_budget(self.written + self.size(missing), free_space(self.dest))
-        for start in range(0, len(missing), BATCH_SIZE):
-            batch = missing[start:start + BATCH_SIZE]
-            run_tool([str(STARBREAKER), "p4k", "extract", "--p4k", str(self.p4k), "-o", str(self.dest),
-                      "--regex", path_regex(batch)], EXTRACT_TIMEOUT_S)
-            # starbreaker exits 0 even when nothing matched, so the files on disk are the only proof.
-            absent = [lower for lower in batch if not self.present(lower)]
-            if absent:
-                raise ExtractionError(f"{len(absent)} conteneurs non extraits, ex. {absent[0]}")
-            self.written += self.size(batch)
-        self.check_whitelist()
-
-    def check_whitelist(self):
-        cache = self.dest / CACHE_SUBDIR
-        produced = {path.relative_to(self.dest).as_posix().lower() for path in cache.rglob("*") if path.is_file()}
-        stray = produced - set(self.by_lower)
-        if stray:
-            raise ExtractionError(f"Fichiers hors liste blanche dans {cache}: {sorted(stray)[:5]}")
+        if missing:
+            raise ExtractionError(f"{len(missing)} conteneurs absents ou tronques, ex. {missing[0]}: relance extract.py --force")
 
 
-def open_store(game_dir, channel, build):
-    """Container cache of one build; refuses a game on another build than the decoded data."""
-    channel_dir = game_dir / channel
-    p4k = channel_dir / "Data.p4k"
-    if not p4k.is_file():
-        raise ExtractionError(f"Data.p4k introuvable: {p4k}")
-    version = read_build(channel_dir)["Version"]
-    if version != build:
-        raise ExtractionError(f"Le jeu est en {version}, data_json en {build}: relance les phases 1 et 2")
-    dest = EXTRACTION_ROOT / channel / build
-    if not (dest / "manifest.json").is_file():
-        raise ExtractionError(f"Phase 1 absente pour {build} ({dest}): lance extract.py d'abord")
-    ensure_outside_game_dir(dest, game_dir)
-    warn_if_game_running()
-    return P4kContainers(p4k, dest)
+def open_store(channel, build):
+    return ContainerCache(EXTRACTION_ROOT / channel / build)
 
 
 def load_records(records_root, marker):

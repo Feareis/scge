@@ -47,6 +47,20 @@ def test_checks_catch_broken_catalog():
     }  # fmt: skip
 
 
+def test_lists_split_the_catalog_without_changing_rows():
+    import json
+    import tempfile
+    from pathlib import Path
+
+    catalog = {"header": {"build": "x"}, "items": [{"guid": "i1"}], "commodities": [{"guid": "c1"}],
+               "manufacturers": [], "locations": [{"guid": "l1", "parent": None}]}  # fmt: skip
+    with tempfile.TemporaryDirectory() as folder:
+        normalize.write_lists(Path(folder), catalog)
+        for key in normalize.CATALOG_LISTS:
+            data = json.loads((Path(folder) / normalize.LISTS_DIR / f"{key}.json").read_text(encoding="utf-8"))
+            assert data == {"header": catalog["header"], key: catalog[key]}
+
+
 if __name__ == "__main__":
     for name, test in list(globals().items()):
         if name.startswith("test_"):

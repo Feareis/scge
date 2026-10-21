@@ -1,4 +1,4 @@
-"""Phase 1: extract the DataCore and English localization from Star Citizen's Data.p4k.
+"""Phase 1: extract the DataCore, English localization and PU object containers from Star Citizen's Data.p4k.
 
 The game folder is read-only: Data.p4k is read in place, nothing is ever written there.
 Usage: python extract.py [--dry-run] [--force] [--game-dir DIR] [--channel LIVE]
@@ -22,7 +22,10 @@ UNP4K = ROOT / "tools" / "unp4k-suite-win-x64-v4.0.87" / "publish" / "unp4k.exe"
 UNP4K_VERSION = "v4.0.87 (unp4k.exe 1.0.0+b492ab14d262)"
 
 # Each pattern must match at least one p4k entry; nothing outside these leaves the p4k.
-WHITELIST = ("Data/Game*.dcb", "Data/Localization/english/global.ini")
+# Object containers (.socpak) place item banks and freight elevators in each location (read by storage_locations.py).
+WHITELIST = ("Data/Game*.dcb", "Data/Localization/english/global.ini", "Data/ObjectContainers/PU/**/*.socpak")
+BATCH_SIZE = 150  # exact paths per starbreaker call; keeps the regex far below the Windows command-line limit
+REGEX_META = set(".+*?()|[]{}^$")
 MAX_PLANNED_BYTES = 15 * 1024**3
 WATCHED_PROCESSES = ("rsi launcher.exe", "starcitizen.exe")
 LIST_TIMEOUT_S = 600
@@ -101,14 +104,23 @@ def parse_listing(stdout):
 
 
 def plan_entries(p4k):
+    """Whitelist pattern -> {p4k path: size}; every pattern must match."""
     planned = {}
     for pattern in WHITELIST:
         stdout = run_tool([str(STARBREAKER), "p4k", "list", "--p4k", str(p4k), "--filter", pattern], LIST_TIMEOUT_S)
         matches = parse_listing(stdout)
         if not matches:
             raise ExtractionError(f"Aucune entree du p4k ne correspond a {pattern}")
-        planned.update(matches)
+        planned[pattern] = matches
     return planned
+
+
+def path_regex(paths):
+    """Exact, case-insensitive match of p4k paths; the p4k stores backslashes, callers pass slashes."""
+    separator = "[\\\\/]"
+    escaped = ("".join(separator if char in "/\\" else ("\\" + char if char in REGEX_META else char) for char in path)
+               for path in paths)
+    return "(?i)^(?:" + "|".join(escaped) + ")$"
 
 
 def check_budget(planned_bytes, free_bytes):
@@ -161,18 +173,37 @@ def p4k_fingerprint(p4k):
     return stat.st_size, stat.st_mtime_ns
 
 
+def extract_batches(p4k, planned, staging):
+    """One starbreaker call per BATCH_SIZE exact paths; a failed batch is only reported (its entries are retried alone)."""
+    entries = sorted(planned)
+    for start in range(0, len(entries), BATCH_SIZE):
+        batch = entries[start:start + BATCH_SIZE]
+        args = [str(STARBREAKER), "p4k", "extract", "--p4k", str(p4k), "-o", str(staging), "--regex", path_regex(batch)]
+        try:
+            run_tool(args, EXTRACT_TIMEOUT_S, cwd=staging)
+        except (ExtractionError, subprocess.TimeoutExpired) as error:
+            print(f"AVERTISSEMENT: lot {start // BATCH_SIZE + 1} en echec, reprise fichier par fichier: {error}")
+        print(f"  {min(start + BATCH_SIZE, len(entries)):,} / {len(entries):,} fichiers")
+
+
 def extract_all(p4k, planned, staging):
     before = p4k_fingerprint(p4k)
+    extract_batches(p4k, planned, staging)
     files = []
     for entry, size in sorted(planned.items()):
-        print(f"Extraction de {entry} ({size / 1024**2:.1f} Mo)...")
-        tool = extract_entry(p4k, entry, size, staging)
-        files.append({"p4k_path": entry, "path": entry, "size": size, "sha256": sha256_of(staging / entry), "tool": tool})
+        target = staging / entry
+        if target.is_file() and target.stat().st_size == size:
+            tool = "starbreaker"
+        else:  # missing or truncated after its batch: retry alone, with the unp4k fallback
+            tool = extract_entry(p4k, entry, size, staging)
+        files.append({"p4k_path": entry, "path": entry, "size": size, "sha256": sha256_of(target), "tool": tool})
     if p4k_fingerprint(p4k) != before:
         raise ExtractionError("Data.p4k a change pendant l'extraction (mise a jour ?) - relance avec --force")
-    produced = {path.relative_to(staging).as_posix() for path in staging.rglob("*") if path.is_file()}
-    if produced != set(planned):
-        raise ExtractionError(f"Fichiers hors liste blanche produits: {sorted(produced - set(planned))}")
+    # Lower-cased: Windows folds p4k folders that differ only by case (Outpost/ and outpost/) into one.
+    produced = {path.relative_to(staging).as_posix().lower() for path in staging.rglob("*") if path.is_file()}
+    expected = {entry.lower() for entry in planned}
+    if produced != expected:
+        raise ExtractionError(f"Fichiers hors liste blanche produits: {sorted(produced - expected)[:10]}")
     return files
 
 
@@ -182,6 +213,7 @@ def build_manifest(channel, build, p4k, files, tool_versions):
     return {
         "channel": channel,
         "build": build,
+        "whitelist": list(WHITELIST),
         "source": {"p4k": str(p4k), "size": size,
                    "mtime": datetime.datetime.fromtimestamp(mtime_ns / 1e9, datetime.UTC).isoformat()},
         "tools": {name: tool_versions[name] for name in used},
@@ -190,12 +222,30 @@ def build_manifest(channel, build, p4k, files, tool_versions):
     }
 
 
-def print_plan(planned, build_dir, already_done):
-    for entry, size in sorted(planned.items()):
-        print(f"  {entry:<45} {size:>14,} o  ({size / 1024**2:.1f} Mo)")
-    total = sum(planned.values())
+def print_plan(by_pattern, build_dir, already_done):
+    for pattern, matches in by_pattern.items():
+        size = sum(matches.values())
+        label = next(iter(matches)) if len(matches) == 1 else pattern
+        count = "" if len(matches) == 1 else f", {len(matches):,} fichiers"
+        print(f"  {label:<45} {size:>14,} o  ({size / 1024**2:.1f} Mo{count})")
+    total = sum(sum(matches.values()) for matches in by_pattern.values())
     print(f"  Total: {total:,} o ({total / 1024**2:.1f} Mo)")
     print(f"Sortie: {build_dir}" + ("  [deja extrait - rien a faire sans --force]" if already_done else ""))
+
+
+def is_done(build_dir):
+    """A build is done only if its manifest was written with the current whitelist."""
+    manifest_path = build_dir / "manifest.json"
+    if not manifest_path.is_file():
+        return False
+    try:
+        whitelist = json.loads(manifest_path.read_text(encoding="utf-8")).get("whitelist")
+    except (OSError, ValueError) as error:
+        raise ExtractionError(f"manifest.json illisible ({manifest_path}): {error}") from error
+    if whitelist != list(WHITELIST):
+        print(f"Manifest existant fait avec une autre liste blanche ({whitelist}): extraction a refaire.")
+        return False
+    return True
 
 
 def main(argv):
@@ -212,9 +262,10 @@ def main(argv):
     tool_versions = {"starbreaker": starbreaker_version(), "unp4k": UNP4K_VERSION}
     print(f"Build {build['Version']} ({build['Branch']}), starbreaker {tool_versions['starbreaker']}")
 
-    planned = plan_entries(p4k)
-    already_done = (build_dir / "manifest.json").is_file()
-    print_plan(planned, build_dir, already_done)
+    by_pattern = plan_entries(p4k)
+    planned = {entry: size for matches in by_pattern.values() for entry, size in matches.items()}
+    already_done = is_done(build_dir)
+    print_plan(by_pattern, build_dir, already_done)
     check_budget(sum(planned.values()), free_space(build_dir))
     if args.dry_run:
         print("Dry-run: rien n'a ete ecrit.")
@@ -233,8 +284,12 @@ def main(argv):
     if build_dir.exists():
         shutil.rmtree(build_dir)
     staging.rename(build_dir)
-    for entry in files:
+    singles = [entry for entry in files if "/ObjectContainers/" not in entry["path"]]
+    for entry in singles:
         print(f"OK {entry['path']}  {entry['size']:,} o  sha256={entry['sha256']}  ({entry['tool']})")
+    containers = [entry for entry in files if entry not in singles]
+    print(f"OK {len(containers):,} conteneurs, {sum(entry['size'] for entry in containers):,} o "
+          "(taille et SHA-256 de chacun dans le manifest)")
     print(f"Manifest: {build_dir / 'manifest.json'}")
     return 0
 

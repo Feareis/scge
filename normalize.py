@@ -1,4 +1,4 @@
-"""Phase 2B: turn data_json/<build>/raw/ into catalog.json, wikelo.json and report.md.
+"""Phase 2B: turn data_json/<build>/raw/ into catalog.json, lists/*.json, wikelo.json and report.md.
 
 Output is sorted by GUID and carries no run timestamp: two runs on the same raw/ give identical files.
 Usage: python normalize.py [--build 4.10.197.2878]   (default: latest build with raw_manifest.json)
@@ -22,6 +22,7 @@ NO_ENGLISH_NAME = "sans nom anglais"
 DISABLED_MARKER = "DO_NOT_USE"
 VEHICLE_PATHS = ("entities/spaceships/", "entities/groundvehicles/")
 CATALOG_LISTS = ("items", "commodities", "manufacturers", "locations")
+LISTS_DIR = "lists"
 EXPECTED_SIZES = range(1, 12)  # 1..11 per the spec; the game also ships S00 components and an S12 gun, so this only warns
 
 
@@ -220,6 +221,12 @@ def dump_json(path, data):
     return hashlib.sha256(text.encode("utf-8")).hexdigest()
 
 
+def write_lists(out_dir, catalog):
+    """lists/<key>.json: each catalog list on its own, same header and rows (catalog.json stays the reference)."""
+    return {key: dump_json(out_dir / LISTS_DIR / f"{key}.json", {"header": catalog["header"], key: catalog[key]})
+            for key in CATALOG_LISTS}
+
+
 def render_report(catalog, checks, stats):
     hdr = catalog["header"]
     lines = [f"# Rapport de normalisation - {hdr['build']} (patch {hdr['patch']}, {hdr['channel']}, {hdr['date']})", ""]
@@ -243,6 +250,7 @@ def render_report(catalog, checks, stats):
         f"- Wikelo: {stats['wikelo_active']} echanges dans `wikelo.json`, {stats['wikelo_disabled']} desactives dans "
         "`wikelo_disabled/wikelo.json`.",
         f"- SHA-256 de `catalog.json`: `{stats['catalog_sha256']}`.",
+        f"- Listes separees (memes lignes, memes GUID): `{LISTS_DIR}/` " + ", ".join(f"`{key}.json`" for key in CATALOG_LISTS) + ".",
         "",
     ]
     off_size = [i for i in catalog["items"] if i["size"] not in EXPECTED_SIZES]
@@ -276,6 +284,7 @@ def main(argv):
     active, disabled = build_wikelo(explore.wikelo_trades(records_root, scan), scan, texts, context)
 
     catalog_sha256 = dump_json(out_dir / "catalog.json", catalog)
+    write_lists(out_dir, catalog)
     dump_json(out_dir / "wikelo.json", {"header": catalog["header"], "trades": active})
     dump_json(out_dir / "wikelo_disabled" / "wikelo.json", {"header": catalog["header"], "trades": disabled})
     checks = run_checks(catalog, active + disabled)

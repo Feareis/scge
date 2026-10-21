@@ -27,7 +27,7 @@ def run_with_stubs(argv):
 
 def test_full_run_order_and_build():
     calls = run_with_stubs(["--force"])
-    assert [name for name, _ in calls] == ["extract", "decode", "normalize", "storage_locations"]
+    assert [name for name, _ in calls] == ["extract", "decode", "explore", "normalize", "storage_locations"]
     assert "--force" in calls[0][1] and "--force" in calls[1][1] and "--force" not in calls[2][1]
     assert all("9.9.9" in step_argv for _, step_argv in calls[1:])
 
