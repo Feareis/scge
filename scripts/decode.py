@@ -1,6 +1,6 @@
 """Phase 2A: export the extracted DataCore (Game*.dcb) to JSON with starbreaker.
 
-Input: extraction_brute/<channel>/<build>/ (latest build by default). Output: data_json/<build>/raw/.
+Input: raw_extraction/<channel>/<build>/ (latest build by default). Output: data_json/<build>/raw/.
 Usage: python -m scripts.decode [--dry-run] [--force] [--channel LIVE] [--build 4.10.197.2878]
 """
 
@@ -15,10 +15,11 @@ import time
 from fnmatch import fnmatch
 from pathlib import Path
 
-from .extract import BUILD_ID_PATTERN, MAX_PLANNED_BYTES, ROOT, STARBREAKER, ExtractionError, sha256_of, starbreaker_version
+from .config import SETTINGS
+from .extract import BUILD_ID_PATTERN, MAX_PLANNED_BYTES, STARBREAKER, ExtractionError, sha256_of, starbreaker_version
 
-EXTRACTION_ROOT = ROOT / "extraction_brute"
-DATA_JSON_ROOT = ROOT / "data_json"
+EXTRACTION_ROOT = SETTINGS.extraction_root
+DATA_JSON_ROOT = SETTINGS.data_json_root
 EXPORT_TIMEOUT_S = 3600
 # starbreaker `dcb extract --filter` matches record file paths, not record names.
 USEFUL_FAMILIES = (
@@ -39,7 +40,7 @@ class CapExceededError(ExtractionError):
 
 def parse_args(argv):
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    parser.add_argument("--channel", default="LIVE")
+    parser.add_argument("--channel", default=SETTINGS.channel)
     parser.add_argument("--build", help="build folder name; default: latest extracted build")
     parser.add_argument("--dry-run", action="store_true", help="measure file count and size, keep nothing")
     parser.add_argument("--force", action="store_true", help="re-export even if raw/ is already complete")

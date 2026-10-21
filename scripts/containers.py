@@ -1,7 +1,7 @@
 """Object containers (.socpak) extracted by phase 1, and the DataCore records that describe places and consoles.
 
 Shared by storage_locations.py (phase 2C) and explore_storage.py (exploration tool). Nothing here reads Data.p4k:
-containers are read from extraction_brute/<channel>/<build>/Data/ObjectContainers/, as listed in the phase 1 manifest.
+containers are read from raw_extraction/<channel>/<build>/Data/ObjectContainers/, as listed in the phase 1 manifest.
 """
 
 import collections

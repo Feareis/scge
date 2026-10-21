@@ -28,6 +28,7 @@ from .containers import (
     mb,
     open_store,
 )
+from .config import SETTINGS
 from .decode import EXTRACTION_ROOT
 from .extract import ExtractionError
 
@@ -74,7 +75,7 @@ LIMITS = (
 def parse_args(argv):
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--build", help="build folder in data_json/; default: latest exported build")
-    parser.add_argument("--channel", default="LIVE")
+    parser.add_argument("--channel", default=SETTINGS.channel)
     parser.add_argument("--dry-run", action="store_true", help="list containers and sizes; extract nothing")
     parser.add_argument("--roots-only", action="store_true", help="stop after the system-layer containers")
     return parser.parse_args(argv)

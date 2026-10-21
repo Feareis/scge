@@ -6,7 +6,7 @@ the catalog GUIDs (systemGuid, parentGuid, bodyGuid).
 Listed place = catalog place whose parent is a star, planet or moon; places under it are sub-places counted for it.
 Inventory = an item bank (found in its containers) or freight (DataCore amenity or a freight console in its
 containers, hangars included). ExtractOnly kiosks (withdraw only) do not count; unknown places are left out.
-Like phases 2A/2B it never reads Data.p4k: containers come from the phase 1 extraction (extraction_brute/).
+Like phases 2A/2B it never reads Data.p4k: containers come from the phase 1 extraction (raw_extraction/).
 Usage: python -m scripts.storage_locations [--build 4.10.197.2878]   (default: latest build with raw_manifest.json)
 """
 

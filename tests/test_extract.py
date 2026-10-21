@@ -26,7 +26,7 @@ def test_output_inside_game_dir_is_refused():
     expect_error(extract.ensure_outside_game_dir, game / "LIVE" / "out", game)
     expect_error(extract.ensure_outside_game_dir, game, game)
     expect_error(extract.ensure_outside_game_dir, game.parent, game)
-    extract.ensure_outside_game_dir(Path(r"C:\GAME_EXTRACT\extraction_brute\LIVE\4.10"), game)
+    extract.ensure_outside_game_dir(Path(r"C:\GAME_EXTRACT\raw_extraction\LIVE\4.10"), game)
 
 
 def test_budget():

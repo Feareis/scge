@@ -1,6 +1,6 @@
 """Extraction pipeline v1: phase 1 (extract) -> 2A (decode, explore) -> 2B (normalize) -> 2C (storage_locations).
 
-Phase 1 is the only step that reads Data.p4k (whitelist, 15 GB cap); phases 2x read extraction_brute/ only.
+Phase 1 is the only step that reads Data.p4k (whitelist, 15 GB cap); phases 2x read raw_extraction/ only.
 Each step skips work already done for the current game build; a new build gets its own folders.
 Outputs in data_json/<build>/ (one GUID per record everywhere):
   raw/, exploration.md                          2A
@@ -18,6 +18,7 @@ import sys
 from pathlib import Path
 
 from scripts import decode, explore, extract, normalize, storage_locations
+from scripts.config import SETTINGS
 from scripts.extract import ExtractionError, read_build, sha256_of
 
 OUTPUTS = (
@@ -28,8 +29,8 @@ OUTPUTS = (
 
 def parse_args(argv):
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    parser.add_argument("--game-dir", type=Path, default=Path(r"D:\Roberts Space Industries\StarCitizen"))
-    parser.add_argument("--channel", default="LIVE")
+    parser.add_argument("--game-dir", type=Path, default=SETTINGS.game_dir)
+    parser.add_argument("--channel", default=SETTINGS.channel)
     parser.add_argument("--dry-run", action="store_true", help="show what would be read from Data.p4k; write nothing")
     parser.add_argument("--force", action="store_true", help="re-extract and re-decode even if this build is done")
     return parser.parse_args(argv)
@@ -54,6 +55,12 @@ def run_step(name, module, argv):
         raise ExtractionError(f"{name} a echoue")
 
 
+def make_output_dirs():
+    """The output roots named in config.ini; created here so a fresh clone runs without manual setup."""
+    for folder in (decode.EXTRACTION_ROOT, decode.DATA_JSON_ROOT):
+        folder.mkdir(parents=True, exist_ok=True)
+
+
 def write_manifest(build, channel, ran):
     out_dir = decode.DATA_JSON_ROOT / build
     manifest = {
@@ -69,6 +76,7 @@ def write_manifest(build, channel, ran):
 
 def main(argv):
     args = parse_args(argv)
+    print(f"Config: {SETTINGS.source}")
     build = read_build(args.game_dir / args.channel)["Version"]
     decoded = (decode.DATA_JSON_ROOT / build / "raw_manifest.json").is_file()
     print(f"Build du jeu: {build} ({'deja decode' if decoded else 'nouveau build: tout sera produit'})")
@@ -77,6 +85,7 @@ def main(argv):
         run_step(plan[0][0] + " (dry-run)", extract, plan[0][2] + ["--dry-run"])
         print("\nDry-run: rien n'a ete ecrit; les phases 2x ne lisent pas Data.p4k.")
         return 0
+    make_output_dirs()
     for name, module, step_argv in plan:
         run_step(name, module, step_argv)
     print(f"\nManifest: {write_manifest(build, args.channel, [name for name, _, _ in plan])}")

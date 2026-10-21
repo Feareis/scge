@@ -1,5 +1,10 @@
 # Game data and third-party binaries: large, reproducible, not ours to version.
-extraction_brute/
+raw_extraction/
 data_json/
 tools/
+# Machine-specific paths; config.example.ini is the versioned template.
+config.ini
+# Tool caches.
 __pycache__/
+.pytest_cache/
+.ruff_cache/

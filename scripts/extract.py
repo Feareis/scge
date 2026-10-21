@@ -1,7 +1,7 @@
 """Phase 1: extract the DataCore, English localization and PU object containers from Star Citizen's Data.p4k.
 
 The game folder is read-only: Data.p4k is read in place, nothing is ever written there.
-Usage: python -m scripts.extract [--dry-run] [--force] [--game-dir DIR] [--channel LIVE]
+Usage: python -m scripts.extract [--dry-run] [--force] [--game-dir DIR] [--channel LIVE]   (defaults: config.ini)
 """
 
 import argparse
@@ -15,9 +15,10 @@ import subprocess
 import sys
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parents[1]  # GAME_EXTRACT, one level above scripts/
-STARBREAKER = ROOT / "tools" / "starbreaker-cli-v0.3.2-windows-x86_64" / "starbreaker.exe"
-UNP4K = ROOT / "tools" / "unp4k-suite-win-x64-v4.0.87" / "publish" / "unp4k.exe"
+from .config import SETTINGS
+
+STARBREAKER = SETTINGS.starbreaker
+UNP4K = SETTINGS.unp4k
 # unp4k has no --version flag: release tag from the zip name, build from the exe ProductVersion.
 UNP4K_VERSION = "v4.0.87 (unp4k.exe 1.0.0+b492ab14d262)"
 
@@ -39,9 +40,9 @@ class ExtractionError(Exception):
 
 def parse_args(argv):
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    parser.add_argument("--game-dir", type=Path, default=Path(r"D:\Roberts Space Industries\StarCitizen"))
-    parser.add_argument("--channel", default="LIVE")
-    parser.add_argument("--out-root", type=Path, default=ROOT / "extraction_brute")
+    parser.add_argument("--game-dir", type=Path, default=SETTINGS.game_dir)
+    parser.add_argument("--channel", default=SETTINGS.channel)
+    parser.add_argument("--out-root", type=Path, default=SETTINGS.extraction_root)
     parser.add_argument("--dry-run", action="store_true", help="show targets, sizes and output dir; write nothing")
     parser.add_argument("--force", action="store_true", help="re-extract even if this build is already done")
     return parser.parse_args(argv)
