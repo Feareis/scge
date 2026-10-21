@@ -1,10 +1,10 @@
-"""Run: python test_explore.py - checks explore.py parsers and catalog_rules.classify on synthetic records."""
+"""Run: python -m tests.test_explore - checks explore.py parsers and catalog_rules.classify on synthetic records."""
 
 import tempfile
 from pathlib import Path
 
-import explore
-from catalog_rules import classify
+from scripts import explore
+from scripts.catalog_rules import classify
 
 
 def test_references():

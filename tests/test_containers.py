@@ -1,13 +1,13 @@
-"""Run: python test_containers.py - checks the socpak readers of containers.py on synthetic containers."""
+"""Run: python -m tests.test_containers - checks the socpak readers of containers.py on synthetic containers."""
 
 import re
 import tempfile
 import zipfile
 from pathlib import Path
 
-import containers
-import extract
-import explore_storage
+from scripts import containers
+from scripts import extract
+from scripts import explore_storage
 
 CONTAINER_XML = b"""<ObjectContainer name="base"><ChildObjectContainers>
  <Child name="Data/ObjectContainers/PU/loc/Base_Hab.socpak" starMapRecord="aaaa-1">

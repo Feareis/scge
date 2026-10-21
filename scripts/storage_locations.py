@@ -7,7 +7,7 @@ Listed place = catalog place whose parent is a star, planet or moon; places unde
 Inventory = an item bank (found in its containers) or freight (DataCore amenity or a freight console in its
 containers, hangars included). ExtractOnly kiosks (withdraw only) do not count; unknown places are left out.
 Like phases 2A/2B it never reads Data.p4k: containers come from the phase 1 extraction (extraction_brute/).
-Usage: python storage_locations.py [--build 4.10.197.2878]   (default: latest build with raw_manifest.json)
+Usage: python -m scripts.storage_locations [--build 4.10.197.2878]   (default: latest build with raw_manifest.json)
 """
 
 import argparse
@@ -16,10 +16,10 @@ import json
 import sys
 import zipfile
 
-import explore
-import containers as storage
-from decode import EXTRACTION_ROOT
-from extract import ExtractionError
+from . import explore
+from . import containers as storage
+from .decode import EXTRACTION_ROOT
+from .extract import ExtractionError
 
 UNKNOWN = "unknown"
 HANGAR_DIR = "instancedinterior/hangar/"

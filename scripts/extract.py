@@ -1,7 +1,7 @@
 """Phase 1: extract the DataCore, English localization and PU object containers from Star Citizen's Data.p4k.
 
 The game folder is read-only: Data.p4k is read in place, nothing is ever written there.
-Usage: python extract.py [--dry-run] [--force] [--game-dir DIR] [--channel LIVE]
+Usage: python -m scripts.extract [--dry-run] [--force] [--game-dir DIR] [--channel LIVE]
 """
 
 import argparse
@@ -15,7 +15,7 @@ import subprocess
 import sys
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parent
+ROOT = Path(__file__).resolve().parents[1]  # GAME_EXTRACT, one level above scripts/
 STARBREAKER = ROOT / "tools" / "starbreaker-cli-v0.3.2-windows-x86_64" / "starbreaker.exe"
 UNP4K = ROOT / "tools" / "unp4k-suite-win-x64-v4.0.87" / "publish" / "unp4k.exe"
 # unp4k has no --version flag: release tag from the zip name, build from the exe ProductVersion.

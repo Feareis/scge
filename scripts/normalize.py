@@ -1,7 +1,7 @@
 """Phase 2B: turn data_json/<build>/raw/ into catalog.json, lists/*.json, wikelo.json and report.md.
 
 Output is sorted by GUID and carries no run timestamp: two runs on the same raw/ give identical files.
-Usage: python normalize.py [--build 4.10.197.2878]   (default: latest build with raw_manifest.json)
+Usage: python -m scripts.normalize [--build 4.10.197.2878]   (default: latest build with raw_manifest.json)
 """
 
 import argparse
@@ -12,9 +12,9 @@ import json
 import re
 import sys
 
-import explore
-from catalog_rules import classify
-from extract import ExtractionError
+from . import explore
+from .catalog_rules import classify
+from .extract import ExtractionError
 
 CLASS_CATEGORIES = {"composants de vaisseau", "armes"}  # validated: class read from the English description
 EXCLUDED_LOCATION_TYPES = {None, "CardinalPoint", "YouAreHere", "QuantumTracePoint", "NavPoint"}  # UI markers, not places

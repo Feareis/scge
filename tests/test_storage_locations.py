@@ -1,6 +1,6 @@
-"""Run: python test_storage_locations.py - checks closure, true/false/unknown decisions and report checks."""
+"""Run: python -m tests.test_storage_locations - checks closure, true/false/unknown decisions and report checks."""
 
-import storage_locations as sl
+from scripts import storage_locations as sl
 
 # a -> b (child) ; b's gateway -> hangar h ; c is never reached ; "outside" is referenced but not in the graph.
 GRAPH = {

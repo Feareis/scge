@@ -1,7 +1,7 @@
-"""Run: python test_normalize.py - checks normalize.py logic on synthetic data (no raw/ needed)."""
+"""Run: python -m tests.test_normalize - checks normalize.py logic on synthetic data (no raw/ needed)."""
 
-import normalize
-from extract import ExtractionError
+from scripts import normalize
+from scripts.extract import ExtractionError
 
 
 def test_header_from_manifest():

@@ -1,7 +1,7 @@
 """Phase 2A: export the extracted DataCore (Game*.dcb) to JSON with starbreaker.
 
 Input: extraction_brute/<channel>/<build>/ (latest build by default). Output: data_json/<build>/raw/.
-Usage: python decode.py [--dry-run] [--force] [--channel LIVE] [--build 4.10.197.2878]
+Usage: python -m scripts.decode [--dry-run] [--force] [--channel LIVE] [--build 4.10.197.2878]
 """
 
 import argparse
@@ -15,7 +15,7 @@ import time
 from fnmatch import fnmatch
 from pathlib import Path
 
-from extract import BUILD_ID_PATTERN, MAX_PLANNED_BYTES, ROOT, STARBREAKER, ExtractionError, sha256_of, starbreaker_version
+from .extract import BUILD_ID_PATTERN, MAX_PLANNED_BYTES, ROOT, STARBREAKER, ExtractionError, sha256_of, starbreaker_version
 
 EXTRACTION_ROOT = ROOT / "extraction_brute"
 DATA_JSON_ROOT = ROOT / "data_json"

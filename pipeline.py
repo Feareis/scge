@@ -17,12 +17,8 @@ import json
 import sys
 from pathlib import Path
 
-import decode
-import explore
-import extract
-import normalize
-import storage_locations
-from extract import ExtractionError, read_build, sha256_of
+from scripts import decode, explore, extract, normalize, storage_locations
+from scripts.extract import ExtractionError, read_build, sha256_of
 
 OUTPUTS = (
     "catalog.json", "lists/items.json", "lists/commodities.json", "lists/manufacturers.json", "lists/locations.json",

@@ -1,6 +1,6 @@
 """Phase 2A: explore data_json/<build>/raw/ and write data_json/<build>/exploration.md.
 
-Usage: python explore.py [--build 4.10.197.2878]   (default: latest build with raw_manifest.json)
+Usage: python -m scripts.explore [--build 4.10.197.2878]   (default: latest build with raw_manifest.json)
 """
 
 import argparse
@@ -11,8 +11,8 @@ import sys
 import time
 from pathlib import Path
 
-from decode import DATA_JSON_ROOT, EXTRACTION_ROOT, version_key
-from extract import ExtractionError
+from .decode import DATA_JSON_ROOT, EXTRACTION_ROOT, version_key
+from .extract import ExtractionError
 
 RECORDS_SUBDIR = Path("raw/libs/foundry/records")
 LOCALIZATION = Path("Data/Localization/english/global.ini")
@@ -35,7 +35,7 @@ def find_out_dir(build):
     if build:
         done = [path for path in done if path.name == build]
     if not done:
-        raise ExtractionError("Aucun data_json/<build>/raw_manifest.json: lance decode.py d'abord")
+        raise ExtractionError("Aucun data_json/<build>/raw_manifest.json: lance python -m scripts.decode d'abord")
     return max(done, key=lambda path: version_key(path.name))
 
 
@@ -576,7 +576,7 @@ def section_names(scan, texts):
 
 
 def section_proposal(scan, texts, name_lines, missing):
-    from catalog_rules import classify  # noqa: PLC0415 - kept local: only the report needs the proposal
+    from .catalog_rules import classify  # noqa: PLC0415 - kept local: only the report needs the proposal
 
     items = [item for item in scan.entities.values() if item.get("is_item")]
     categories, excluded, unmapped = collections.defaultdict(list), collections.defaultdict(list), collections.Counter()

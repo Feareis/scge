@@ -4,7 +4,7 @@ Sources: DataCore amenities (data_json/<build>/raw/) and object containers (.soc
 Writes data_json/<build>/bonus/exploration_stockage.md; containers are cached by containers.py.
 Since the v1 pipeline, phase 1 extracts every container: this tool only reads them (--dry-run / --roots-only
 kept from the bonus run: they now stop after the plan / after indexing the system layer).
-Usage: python explore_storage.py [--dry-run | --roots-only]
+Usage: python -m scripts.explore_storage [--dry-run | --roots-only]
 """
 
 import argparse
@@ -13,8 +13,8 @@ import json
 import sys
 from pathlib import Path
 
-import explore
-from containers import (
+from . import explore
+from .containers import (
     CACHE_SUBDIR,
     FREIGHT_AMENITIES,
     MAX_PARENT_DEPTH,
@@ -28,8 +28,8 @@ from containers import (
     mb,
     open_store,
 )
-from decode import EXTRACTION_ROOT
-from extract import ExtractionError
+from .decode import EXTRACTION_ROOT
+from .extract import ExtractionError
 
 MAX_CONTAINER_DEPTH = 30
 # StarMapObject GUIDs. Sample = containers actually read; the table adds five places judged on the DataCore only.

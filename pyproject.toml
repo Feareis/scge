@@ -1,0 +1,4 @@
+[tool.pytest.ini_options]
+# Tests import the steps as scripts.<name>; GAME_EXTRACT must be on sys.path even for a bare "pytest".
+pythonpath = ["."]
+testpaths = ["tests"]

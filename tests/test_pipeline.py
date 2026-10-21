@@ -1,4 +1,4 @@
-"""Run: python test_pipeline.py - checks step order, build pinning and the dry-run path, with stub steps."""
+"""Run: python -m tests.test_pipeline - checks step order, build pinning and the dry-run path, with stub steps."""
 
 from pathlib import Path
 
@@ -13,7 +13,7 @@ def run_with_stubs(argv):
     saved = (pipeline.read_build, pipeline.decode.DATA_JSON_ROOT, pipeline.write_manifest)
     try:
         for module in modules:
-            module.main = lambda step_argv, name=module.__name__: calls.append((name, step_argv)) or 0
+            module.main = lambda step_argv, name=module.__name__.removeprefix("scripts."): calls.append((name, step_argv)) or 0
         pipeline.read_build = lambda _channel_dir: {"Version": "9.9.9"}
         pipeline.decode.DATA_JSON_ROOT = Path("nonexistent-data-json")
         pipeline.write_manifest = lambda *_args: "manifest"

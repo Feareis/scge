@@ -1,10 +1,10 @@
-"""Run: python test_extract.py - checks the guard rails of extract.py without touching Data.p4k."""
+"""Run: python -m tests.test_extract - checks the guard rails of extract.py without touching Data.p4k."""
 
 import json
 import tempfile
 from pathlib import Path
 
-import extract
+from scripts import extract
 
 
 def expect_error(function, *args):

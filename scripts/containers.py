@@ -10,9 +10,9 @@ import re
 import xml.etree.ElementTree as ET
 import zipfile
 
-import explore
-from decode import EXTRACTION_ROOT
-from extract import ExtractionError
+from . import explore
+from .decode import EXTRACTION_ROOT
+from .extract import ExtractionError
 
 WHITELIST = "Data/ObjectContainers/PU/**/*.socpak"  # the phase 1 whitelist entry for containers
 WHITELIST_PREFIX = "data/objectcontainers/pu/"
@@ -72,12 +72,12 @@ class ContainerCache:
     def __init__(self, build_dir):
         manifest_path = build_dir / "manifest.json"
         if not manifest_path.is_file():
-            raise ExtractionError(f"Phase 1 absente ({manifest_path}): lance extract.py d'abord")
+            raise ExtractionError(f"Phase 1 absente ({manifest_path}): lance python -m scripts.extract d'abord")
         files = json.loads(manifest_path.read_text(encoding="utf-8"))["files"]
         self.dest = build_dir
         self.sizes = {entry["path"]: entry["size"] for entry in files if entry["path"].lower().startswith(WHITELIST_PREFIX)}
         if not self.sizes:
-            raise ExtractionError(f"{manifest_path} ne liste aucun conteneur: relance extract.py (liste blanche a jour)")
+            raise ExtractionError(f"{manifest_path} ne liste aucun conteneur: relance python -m scripts.extract (liste blanche a jour)")
         self.by_lower = {path.lower(): path for path in self.sizes}
 
     def local(self, lower):
@@ -94,7 +94,7 @@ class ContainerCache:
         """Every container is extracted by phase 1; a missing or truncated one means the cache is broken."""
         missing = sorted(lower for lower in lowers if not self.present(lower))
         if missing:
-            raise ExtractionError(f"{len(missing)} conteneurs absents ou tronques, ex. {missing[0]}: relance extract.py --force")
+            raise ExtractionError(f"{len(missing)} conteneurs absents ou tronques, ex. {missing[0]}: relance python -m scripts.extract --force")
 
 
 def open_store(channel, build):
