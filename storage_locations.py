@@ -22,7 +22,9 @@ UNKNOWN = "unknown"
 HANGAR_DIR = "instancedinterior/hangar/"
 GATEWAY_MEMBER = "instancedinteriorgateway.xml"
 KINDS = ("itemInventory", "freight")
-SYSTEM_ROOTS = ("Star", "SolarSystem")  # catalog chains start at the star (Stanton > ArcCorp > Area18)
+BODIES = ("SolarSystem", "Star", "Planet", "Moon")  # never listed: they frame the path (Stanton > ArcCorp > Area18)
+RULE = ("listed place = catalog place whose parent is a star, planet or moon; sub-places count for it; "
+        "inventory = itemInventory (item bank) or freight, sub-places and hangars included")
 MAX_XML_NODES = 5_000_000
 
 
@@ -173,26 +175,66 @@ def lineage(row, by_guid):
 
 
 def build_entries(ctx):
-    """One entry per catalog place, plus every container some place reaches."""
-    by_guid = {row["guid"]: row for row in ctx["catalog"]["locations"]}
-    entries, claimed = [], set()
+    """Values and proofs for every catalog place, plus every container some place reaches."""
+    entries, claimed = {}, set()
     for row in ctx["catalog"]["locations"]:
         linked = ctx["located"].get(row["guid"])
         reached, via_hangar = closure(ctx["graph"], linked[1]) if linked else (set(), set())
         claimed |= reached
         proofs = container_proofs(ctx["store"], ctx["graph"], ctx["consoles"], reached, via_hangar)
         values, evidence = decide(ctx["places"][row["guid"]], linked is not None, proofs)
-        rows = lineage(row, by_guid)
-        entries.append({
-            "guid": row["guid"], "name": row["name"], "type": row["type"],
-            "path": " > ".join(item["name"] for item in rows),
-            "system": rows[0]["name"] if rows[0]["type"] in SYSTEM_ROOTS else None,
-            **values,
-            "proof": evidence,
-            "container": ctx["store"].by_lower.get(linked[0]) if linked else None,
-            "containersRead": len(reached),
-        })
-    return sorted(entries, key=lambda entry: entry["guid"]), claimed
+        entries[row["guid"]] = values | {"proof": evidence}
+    return entries, claimed
+
+
+def listed_place(row, by_guid):
+    """The place a row counts for: itself if its parent is a body, else its nearest ancestor that is."""
+    for _ in range(storage.MAX_PARENT_DEPTH):
+        parent = by_guid.get(row["parent"])
+        if parent is None or parent["type"] in BODIES:
+            return row
+        row = parent
+    raise ExtractionError(f"Chaine de parents trop longue depuis {row['name']}")
+
+
+def merged_value(values):
+    if True in values:
+        return True
+    return UNKNOWN if UNKNOWN in values else False
+
+
+def frame(row, by_guid):
+    """System / planet / moon names framing a listed place, from its catalog ancestors."""
+    rows = lineage(row, by_guid)
+    first = {kind: next((item["name"] for item in rows[:-1] if item["type"] == kind), None) for kind in BODIES}
+    return {"system": first["Star"] or first["SolarSystem"], "planet": first["Planet"], "moon": first["Moon"],
+            "path": " > ".join(item["name"] for item in rows)}
+
+
+def roll_up(entries, catalog):
+    """One entry per listed place; sub-places' values and proofs merged into it (proofs tagged subLocation)."""
+    by_guid = {row["guid"]: row for row in catalog["locations"]}
+    groups = collections.defaultdict(list)
+    for row in catalog["locations"]:
+        if row["type"] not in BODIES:
+            groups[listed_place(row, by_guid)["guid"]].append(row)
+    places = []
+    for guid, members in groups.items():
+        row = by_guid[guid]
+        values = {kind: merged_value([entries[member["guid"]][kind] for member in members]) for kind in KINDS}
+        proof = {kind: [item | ({"subLocation": member["name"]} if member["guid"] != guid else {})
+                        for member in members for item in entries[member["guid"]]["proof"][kind]] for kind in KINDS}
+        both = values["itemInventory"] is True and values["freight"] is True
+        storage_kind = "both" if both else next((kind for kind in KINDS if values[kind] is True), None)
+        places.append({"guid": guid, "name": row["name"], "type": row["type"], **frame(row, by_guid),
+                       "storage": storage_kind, **values,
+                       "subLocations": sorted(member["name"] for member in members if member["guid"] != guid),
+                       "proof": proof})
+    return sorted(places, key=sort_key)
+
+
+def sort_key(place):
+    return tuple(place[key] or "" for key in ("system", "planet", "moon", "name")) + (place["guid"],)
 
 
 def orphan_consoles(ctx, claimed):
@@ -231,53 +273,53 @@ def breakdown_rows(entries, key, label):
     return rows
 
 
-def check_rows(entries, catalog):
-    guids = [entry["guid"] for entry in entries]
-    expected = {row["guid"] for row in catalog["locations"]}
-    duplicates = len(guids) - len(set(guids))
-    unproven = [entry["name"] for entry in entries for kind in KINDS if entry[kind] is True and not entry["proof"][kind]]
+def check_rows(places, catalog):
+    listed = {place["guid"] for place in places}
+    bodies = sum(row["type"] in BODIES for row in catalog["locations"])
+    covered = sum(1 + len(place["subLocations"]) for place in places)
+    unproven = [place["name"] for place in places for kind in KINDS if place[kind] is True and not place["proof"][kind]]
     checks = [
-        ("Chaque lieu du catalogue apparait une fois", set(guids) == expected and not duplicates,
-         f"{len(guids)} entrees, {len(expected)} lieux, doublons: {duplicates}"),
+        ("Chaque lieu du catalogue est un astre, un lieu liste ou un sous-lieu d'un seul lieu liste",
+         bodies + covered == len(catalog["locations"]) and len(listed) == len(places),
+         f"{bodies} astres + {len(places)} lieux listes + {covered - len(places)} sous-lieux = {bodies + covered} "
+         f"/ {len(catalog['locations'])}"),
         ("Chaque `true` a une preuve", not unproven, f"sans preuve: {unproven[:5] or 'aucun'}"),
-        ("Valeurs dans true/false/unknown", all(entry[kind] in (True, False, UNKNOWN) for entry in entries for kind in KINDS), ""),
+        ("Valeurs dans true/false/unknown", all(place[kind] in (True, False, UNKNOWN) for place in places for kind in KINDS), ""),
     ]
     return ["| Controle | Resultat | Detail |", "|---|---|---|"] + [
         f"| {name} | {'OK' if ok else 'ECHEC'} | {detail} |" for name, ok, detail in checks]
 
 
-def render_report(entries, orphans, catalog, no_editor):
-    unknown = sorted((entry for entry in entries if is_unknown(entry)), key=lambda entry: (entry["type"] or "", entry["path"]))
-    extract_only = [entry for entry in entries if entry["freight"] is True and not entry["proof"]["freight"][0].get("amenity")
-                    and all(proof["entity"].endswith("_ExtractOnly") for proof in entry["proof"]["freight"])]
+def render_report(places, orphans, catalog, no_editor):
+    unknown = [place for place in places if is_unknown(place)]
+    storing = [place for place in places if stores(place)]
+    kinds = collections.Counter(place["storage"] for place in storing)
     lines = [
-        f"# Lieux de stockage - {catalog['header']['build']}",
+        f"# Lieux avec inventaire - {catalog['header']['build']}",
         "",
-        "Regle: stockage = item bank (conteneurs) ou fret (amenity DataCore ou console dans les conteneurs). "
-        "`false` = conteneurs du lieu lus sans console; `unknown` = aucun conteneur relie et aucune amenity fret.",
+        "Regle: un lieu est liste si son parent est un astre (etoile, planete, lune); un lieu sous un autre lieu "
+        "(clinique, hopital, zone) est un sous-lieu compte pour son lieu liste. Inventaire = item bank (conteneurs) "
+        "ou fret (amenity DataCore ou console dans les conteneurs), sous-lieux et hangars compris. "
+        "`false` = conteneurs lus sans console; `unknown` = aucun conteneur relie et aucune amenity fret.",
         "",
         "## Controles",
         "",
-        *check_rows(entries, catalog),
+        *check_rows(places, catalog),
         "",
-        f"Lieux avec stockage: **{sum(map(stores, entries))}** / {len(entries)} "
-        f"(item bank: {sum(entry['itemInventory'] is True for entry in entries)}, "
-        f"fret: {sum(entry['freight'] is True for entry in entries)}, unknown: {len(unknown)}).",
+        f"Lieux avec inventaire (dans `storage_locations.json`): **{len(storing)}** / {len(places)} lieux listes "
+        f"(item bank + fret: {kinds['both']}, item bank seul: {kinds['itemInventory']}, fret seul: {kinds['freight']}; "
+        f"unknown: {len(unknown)}).",
         "",
         f"Conteneurs sans `_editor.xml` (aucune entite placee, comptes sans console): "
         f"{', '.join(f'`{path}`' for path in no_editor) or 'aucun'}.",
         "",
         "## Par type de lieu",
         "",
-        *breakdown_rows(entries, "type", "Type"),
+        *breakdown_rows(places, "type", "Type"),
         "",
         "## Par systeme",
         "",
-        *breakdown_rows(entries, "system", "Systeme"),
-        "",
-        f"## A verifier: fret prouve seulement par une console `ExtractOnly` (retrait seul) ({len(extract_only)})",
-        "",
-        *[f"- {entry['path']}" for entry in extract_only],
+        *breakdown_rows(places, "system", "Systeme"),
         "",
         f"## Consoles trouvees sans lieu correspondant ({len(orphans)} conteneurs)",
         "",
@@ -289,7 +331,7 @@ def render_report(entries, orphans, catalog, no_editor):
         "",
         "| Type | Chemin |",
         "|---|---|",
-        *[f"| {entry['type']} | {entry['path']} |" for entry in unknown],
+        *[f"| {place['type']} | {place['path']} |" for place in sorted(unknown, key=lambda place: (place["type"], place["path"]))],
     ]
     return "\n".join(lines) + "\n"
 
@@ -319,12 +361,15 @@ def main(argv):
     ctx = {"catalog": catalog, "store": store, "graph": graph, "consoles": consoles,
            "places": storage.load_places(records_root, texts, catalog_guids), "located": index_all(graph)}
     entries, claimed = build_entries(ctx)
+    places = roll_up(entries, catalog)
+    storing = [place for place in places if stores(place)]
     bonus = out_dir / "bonus"
-    payload = {"header": catalog["header"], "rule": "storage = itemInventory or freight", "locations": entries}
+    payload = {"header": catalog["header"], "rule": RULE, "locations": storing}
     (bonus / "storage_locations.json").write_text(json.dumps(payload, indent=1) + "\n", encoding="utf-8")
-    report = render_report(entries, orphan_consoles(ctx, claimed), catalog, no_editor)
+    report = render_report(places, orphan_consoles(ctx, claimed), catalog, no_editor)
     (bonus / "storage_report.md").write_text(report, encoding="utf-8")
-    print(f"OK {len(entries)} lieux -> {bonus / 'storage_locations.json'}; rapport: {bonus / 'storage_report.md'}")
+    print(f"OK {len(storing)} lieux avec inventaire / {len(places)} listes -> {bonus / 'storage_locations.json'}; "
+          f"rapport: {bonus / 'storage_report.md'}")
     return 0
 
 

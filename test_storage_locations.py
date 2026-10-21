@@ -44,10 +44,44 @@ def test_decide():
     assert values == {"itemInventory": True, "freight": False}  # an item bank alone makes a storage place
 
 
+CATALOG = {"locations": [
+    {"guid": "s", "name": "Stanton", "type": "Star", "parent": None},
+    {"guid": "p", "name": "Hurston", "type": "Planet", "parent": "s"},
+    {"guid": "lz", "name": "Lorville", "type": "LandingZone", "parent": "p"},
+    {"guid": "h", "name": "Maria Pure of Heart", "type": "Outpost", "parent": "lz"},
+    {"guid": "m", "name": "Bloom", "type": "Moon", "parent": "p"},
+    {"guid": "o", "name": "Narena's Rest", "type": "Outpost", "parent": "m"},
+    {"guid": "x", "name": "Kudre Ore", "type": "Outpost", "parent": "m"},
+]}
+
+
+def entry(item, freight, proof_item=(), proof_freight=()):
+    return {"itemInventory": item, "freight": freight, "proof": {"itemInventory": list(proof_item), "freight": list(proof_freight)}}
+
+
+def test_roll_up_merges_sub_places_into_the_listed_place():
+    entries = {
+        "lz": entry(False, True, proof_freight=[{"file": "kiosk"}]),
+        "h": entry(True, False, proof_item=[{"file": "hosp"}]),
+        "o": entry(True, False, proof_item=[{"file": "shack"}]),
+        "x": entry("unknown", False),
+    }
+    places = sl.roll_up(entries, CATALOG)
+    # sorted by system, planet, moon, name: places on the planet itself come before its moons
+    assert [place["name"] for place in places] == ["Lorville", "Kudre Ore", "Narena's Rest"]
+    lorville, kudre, narena = places
+    assert (lorville["storage"], lorville["subLocations"]) == ("both", ["Maria Pure of Heart"])
+    assert lorville["proof"]["itemInventory"] == [{"file": "hosp", "subLocation": "Maria Pure of Heart"}]
+    assert (lorville["system"], lorville["planet"], lorville["moon"]) == ("Stanton", "Hurston", None)
+    assert (narena["storage"], narena["moon"], narena["path"]) == ("itemInventory", "Bloom", "Stanton > Hurston > Bloom > Narena's Rest")
+    assert kudre["storage"] is None and sl.is_unknown(kudre)
+    assert "ECHEC" not in "\n".join(sl.check_rows(places, CATALOG))
+
+
 def test_checks_catch_missing_and_unproven():
-    catalog = {"locations": [{"guid": "1"}, {"guid": "2"}]}
-    entry = {"guid": "1", "name": "A", "itemInventory": True, "freight": False, "proof": {"itemInventory": [], "freight": []}}
-    report = "\n".join(sl.check_rows([entry], catalog))
+    place = {"guid": "o", "name": "A", "itemInventory": True, "freight": False, "subLocations": [],
+             "proof": {"itemInventory": [], "freight": []}}
+    report = "\n".join(sl.check_rows([place], CATALOG))
     assert report.count("ECHEC") == 2
     assert sl.is_unknown({"itemInventory": "unknown", "freight": False})
     assert not sl.is_unknown({"itemInventory": "unknown", "freight": True})
