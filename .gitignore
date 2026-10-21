@@ -1,0 +1,5 @@
+# Game data and third-party binaries: large, reproducible, not ours to version.
+extraction_brute/
+data_json/
+tools/
+__pycache__/
