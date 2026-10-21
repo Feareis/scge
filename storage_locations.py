@@ -1,7 +1,9 @@
-"""Bonus B: write bonus/storage_locations.json and bonus/storage_report.md - which places can store items or freight.
+"""Phase 2C: write data_json/<build>/storage_locations.json and storage_report.md - places with an inventory.
 
-Rule: a place stores if it has an item bank (found in its containers) or freight (DataCore amenity or a console in
-its containers). Containers come from Data.p4k through the explore_storage whitelist, after a dry-run.
+Listed place = catalog place whose parent is a star, planet or moon; places under it are sub-places counted for it.
+Inventory = an item bank (found in its containers) or freight (DataCore amenity or a freight console in its
+containers, hangars included). ExtractOnly kiosks (withdraw only) do not count; unknown places are left out.
+Containers come from Data.p4k through the containers.py whitelist, after a dry-run.
 Usage: python storage_locations.py --dry-run     show what would be extracted, write nothing
        python storage_locations.py               extract the whitelist, then write the JSON and the report
 """
@@ -14,7 +16,7 @@ import zipfile
 from pathlib import Path
 
 import explore
-import explore_storage as storage
+import containers as storage
 from decode import EXTRACTION_ROOT
 from extract import ExtractionError
 
@@ -26,6 +28,7 @@ BODIES = ("SolarSystem", "Star", "Planet", "Moon")  # never listed: they frame t
 RULE = ("listed place = catalog place whose parent is a star, planet or moon; sub-places count for it; "
         "inventory = itemInventory (item bank) or freight, sub-places and hangars included")
 MAX_XML_NODES = 5_000_000
+EXTRACT_ONLY = "_ExtractOnly"  # withdraw-only freight kiosk: not a storage (user rule)
 
 
 def parse_args(argv):
@@ -344,7 +347,7 @@ def main(argv):
     texts = explore.load_localization(EXTRACTION_ROOT / raw_manifest["channel"] / out_dir.name / explore.LOCALIZATION)
     catalog = json.loads((out_dir / "catalog.json").read_text(encoding="utf-8"))
     catalog_guids = {row["guid"] for row in catalog["locations"]}
-    store = storage.open_store(args, out_dir)
+    store = storage.open_store(args.game_dir, args.channel, out_dir.name)
     missing = [lower for lower in store.by_lower if not store.present(lower)]
     print(f"Liste blanche `{storage.WHITELIST}`: {len(store.by_lower):,} conteneurs, {storage.mb(store.size(store.by_lower))}")
     print(f"Deja extraits: {len(store.by_lower) - len(missing):,}; a extraire: {len(missing):,}, {storage.mb(store.size(missing))}")
@@ -354,7 +357,8 @@ def main(argv):
         return 0
 
     store.extract(missing)
-    consoles = storage.load_consoles(records_root)
+    consoles = {guid: console for guid, console in storage.load_consoles(records_root).items()
+                if not console[1].endswith(EXTRACT_ONLY)}
     guid_by_class = {name.lower(): guid for guid, (_, name, _) in consoles.items()}
     graph, no_editor = read_graph(store, guid_by_class, load_hangars(records_root), catalog_guids)
     print(f"Conteneurs sans _editor.xml (aucune entite placee): {no_editor or 'aucun'}")
@@ -363,13 +367,12 @@ def main(argv):
     entries, claimed = build_entries(ctx)
     places = roll_up(entries, catalog)
     storing = [place for place in places if stores(place)]
-    bonus = out_dir / "bonus"
     payload = {"header": catalog["header"], "rule": RULE, "locations": storing}
-    (bonus / "storage_locations.json").write_text(json.dumps(payload, indent=1) + "\n", encoding="utf-8")
+    (out_dir / "storage_locations.json").write_text(json.dumps(payload, indent=1) + "\n", encoding="utf-8")
     report = render_report(places, orphan_consoles(ctx, claimed), catalog, no_editor)
-    (bonus / "storage_report.md").write_text(report, encoding="utf-8")
-    print(f"OK {len(storing)} lieux avec inventaire / {len(places)} listes -> {bonus / 'storage_locations.json'}; "
-          f"rapport: {bonus / 'storage_report.md'}")
+    (out_dir / "storage_report.md").write_text(report, encoding="utf-8")
+    print(f"OK {len(storing)} lieux avec inventaire / {len(places)} listes -> {out_dir / 'storage_locations.json'}; "
+          f"rapport: {out_dir / 'storage_report.md'}")
     return 0
 
 

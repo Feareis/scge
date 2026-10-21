@@ -1,10 +1,11 @@
-"""Run: python test_explore_storage.py - checks the socpak readers of explore_storage.py on synthetic containers."""
+"""Run: python test_containers.py - checks the socpak readers of containers.py on synthetic containers."""
 
 import re
 import tempfile
 import zipfile
 from pathlib import Path
 
+import containers
 import explore_storage
 
 CONTAINER_XML = b"""<ObjectContainer name="base"><ChildObjectContainers>
@@ -39,10 +40,10 @@ def test_readers():
     with tempfile.TemporaryDirectory() as folder:
         socpak = write_socpak(folder)
         with zipfile.ZipFile(socpak) as archive:
-            assert explore_storage.read_member(archive, archive.getinfo("base/entdata/1.entxml")) == b"CryXmlB"
-            assert explore_storage.read_member(archive, archive.getinfo("base.xml")) == CONTAINER_XML
-        root = explore_storage.container_root(socpak)
-        hits = explore_storage.console_hits(socpak, {"itembank_a": "G-ITEM", "freightkiosk": "G-FREIGHT"})
+            assert containers.read_member(archive, archive.getinfo("base/entdata/1.entxml")) == b"CryXmlB"
+            assert containers.read_member(archive, archive.getinfo("base.xml")) == CONTAINER_XML
+        root = containers.container_root(socpak)
+        hits = containers.console_hits(socpak, {"itembank_a": "G-ITEM", "freightkiosk": "G-FREIGHT"})
     assert hits == {("G-ITEM", "Main"): 1, ("G-FREIGHT", "Cargo"): 1, ("G-ITEM", "Cargo"): 1}
     located = explore_storage.index_locations({"base.socpak": root}, {"aaaa-1"})
     assert located == {"aaaa-1": ("base.socpak", {"data/objectcontainers/pu/loc/base_hab.socpak",
@@ -50,7 +51,7 @@ def test_readers():
 
 
 def test_path_regex():
-    pattern = re.compile(explore_storage.path_regex(["Data/PU/a_{B1}.socpak", "Data/PU/c.d+e.socpak"]))
+    pattern = re.compile(containers.path_regex(["Data/PU/a_{B1}.socpak", "Data/PU/c.d+e.socpak"]))
     assert pattern.match("Data\\PU\\A_{b1}.socpak") and pattern.match("data/pu/c.d+e.socpak")
     assert not pattern.match("Data\\PU\\a_{B1}.socpak.bak") and not pattern.match("Data\\PU\\cxd+e.socpak")
 
