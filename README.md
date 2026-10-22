@@ -50,6 +50,7 @@ tests/                 pytest
 - **Liste blanche** : `Data/Game*.dcb`, `Localization/english/global.ini`, `ObjectContainers/PU/**/*.socpak`. Les chemins exacts sont passés à starbreaker par lots de 150 (regex).
 - **GUID** : chaque record garde son GUID du DataCore. Les listes `lists/` et `storage/` sont des découpes de `catalog.json` reliées par GUID (`systemGuid`, `bodyGuid`, `parentGuid`).
 - **Stockage** : un lieu stocke s'il a un item bank (`Itembank_*` dans les `_editor.xml` des `.socpak`) ou du fret (console, plateforme ou amenity « Freight Elevator »). Les sous-lieux remontent au lieu dont le parent est un astre. Les kiosques `ExtractOnly` et les lieux indécidables (`unknown`) sont exclus.
+- **Unité des commodités** : `unit: item` si un objet `Harvestable` (caillou, plante… rangé en inventaire) la contient, avec ses GUID dans `items` ; sinon `scu`. Le nom anglais commun prime sur la composition (le caillou « Carinite (Pure) » contient de la Carinite). Les caisses SCU du DataCore ne prouvent rien : il en génère même pour la Carinite.
 - **`.socpak`** : ce sont des zip dont les en-têtes locaux utilisent `\` ; `containers.read_member` contourne ce défaut.
 - **Reproductible** : à données égales, sorties identiques octet pour octet (clés triées, listes triées par GUID).
 
