@@ -116,6 +116,9 @@ def entity_info(relpath, record):
                 "name_key": loc_key(localization.get("Name")),
                 "desc_key": loc_key(localization.get("Description")),
             }
+        elif kind == "ResourceContainer":
+            entries = component.get("defaultComposition") or []
+            info["resources"] = [ref_guid(e.get("entry")) for e in entries if isinstance(e, dict) and ref_guid(e.get("entry"))]
         elif kind == "VehicleComponentParams" and not info.get("name_key"):
             info["name_key"] = loc_key(component.get("vehicleName"))
     return info

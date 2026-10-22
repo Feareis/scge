@@ -98,9 +98,23 @@ def build_manufacturers(scan, texts, items):
     return sorted(rows, key=lambda row: row["guid"]), fallbacks
 
 
-def build_commodities(scan, texts):
+def build_commodities(scan, texts, items):
+    """A commodity held by a kept Harvestable item (hand-mined rock, plant...) lives in the inventory, not in SCU.
+    The DataCore also gives such commodities SCU cargo boxes, so those boxes prove nothing.
+    A shared English name wins over the composition: the "Carinite (Pure)" rock is filled with plain Carinite."""
+    item_names = {item["guid"]: item["name_en"] for item in items}
+    by_name = {explore.english(texts, c["name_key"]): c["guid"] for c in scan.commodities}
+    by_name.pop(None, None)
+    holders = collections.defaultdict(list)
+    for info in scan.entities.values():
+        if info.get("subtype") != "Harvestable" or info["guid"] not in item_names:
+            continue
+        named = by_name.get(item_names[info["guid"]])
+        for resource in [named] if named else info.get("resources") or []:
+            holders[resource].append(info["guid"])
     rows = [
-        {"guid": c["guid"], "name": c["name"], "name_en": explore.english(texts, c["name_key"]), "unit": "scu"}
+        {"guid": c["guid"], "name": c["name"], "name_en": explore.english(texts, c["name_key"]),
+         "unit": "item" if holders[c["guid"]] else "scu", "items": sorted(holders[c["guid"]])}  # fmt: skip
         for c in scan.commodities
     ]
     named = [row for row in rows if row["name_en"]]
@@ -243,6 +257,9 @@ def render_report(catalog, checks, stats):
         "## Autres listes",
         "",
         f"- Commodites: {len(catalog['commodities'])} (sans nom anglais, ecartees: {unnamed_commodities}).",
+        "- Commodites en inventaire (`unit: item`, tenues par un objet Harvestable, pas en SCU): "
+        + (", ".join(c["name_en"] for c in catalog["commodities"] if c["unit"] == "item") or "aucune")
+        + ".",
         f"- Fabricants: {len(catalog['manufacturers'])} "
         f"(nom technique en repli faute de nom anglais: {stats['manufacturer_fallbacks']}).",
         f"- Lieux: {len(catalog['locations'])} ({stats['dropped_locations']} ecartes: marqueurs d'interface ou sans nom; "
@@ -273,7 +290,7 @@ def main(argv):
 
     items, excluded, unnamed_items = build_items(scan, texts)
     manufacturers, manufacturer_fallbacks = build_manufacturers(scan, texts, items)
-    commodities, unnamed_commodities = build_commodities(scan, texts)
+    commodities, unnamed_commodities = build_commodities(scan, texts, items)
     locations, dropped_locations, reparented = build_locations(scan, texts)
     catalog = {"header": header(raw_manifest), "items": items, "commodities": commodities,
                "manufacturers": manufacturers, "locations": locations}  # fmt: skip

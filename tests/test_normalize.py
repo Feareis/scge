@@ -47,6 +47,30 @@ def test_checks_catch_broken_catalog():
     }  # fmt: skip
 
 
+def test_harvestable_commodities_are_inventory_items():
+    class Scan:
+        commodities = [{"guid": "c-car", "name": "Carinite", "name_key": "k_car"},
+                       {"guid": "c-qua", "name": "Quantanium", "name_key": "k_qua"}]  # fmt: skip
+        entities = {
+            "rock": {"guid": "i-rock", "subtype": "Harvestable", "resources": ["c-car"]},
+            "box": {"guid": "i-box", "subtype": "Cargo", "resources": ["c-car", "c-qua"]},
+            "dropped": {"guid": "i-gone", "subtype": "Harvestable", "resources": ["c-qua"]},
+            # The game fills the pure rock with plain Carinite: its English name decides, not its composition.
+            "pure": {"guid": "i-pure", "subtype": "Harvestable", "resources": ["c-car"]},
+        }
+
+    Scan.commodities.append({"guid": "c-pure", "name": "CarinitePure", "name_key": "k_pure"})
+    texts = {"k_car": "Carinite", "k_qua": "Quantanium", "k_pure": "Carinite (Pure)"}
+    items = [{"guid": "i-rock", "name_en": "Rock"}, {"guid": "i-box", "name_en": "Box"},
+             {"guid": "i-pure", "name_en": "Carinite (Pure)"}]  # fmt: skip
+    rows, _ = normalize.build_commodities(Scan, texts, items)
+    assert rows == [
+        {"guid": "c-car", "name": "Carinite", "name_en": "Carinite", "unit": "item", "items": ["i-rock"]},
+        {"guid": "c-pure", "name": "CarinitePure", "name_en": "Carinite (Pure)", "unit": "item", "items": ["i-pure"]},
+        {"guid": "c-qua", "name": "Quantanium", "name_en": "Quantanium", "unit": "scu", "items": []},
+    ]
+
+
 def test_lists_split_the_catalog_without_changing_rows():
     import json
     import tempfile

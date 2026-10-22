@@ -27,6 +27,14 @@ def test_localization_keys():
     assert explore.CLASS_IN_DESCRIPTION.search(texts["item_descfoo"]).group(1) == "Military"
 
 
+def test_entity_info_reads_resource_composition():
+    record = {"_RecordId_": "g", "_RecordName_": "EntityClassDefinition.Rock", "_RecordValue_": {"Components": [
+        {"_Type_": "ResourceContainer", "defaultComposition": [
+            {"_Type_": "ResourceContainerDefaultCompositionEntry", "entry": {"_RecordId_": "c-car"}, "weight": 1.0}]},
+    ]}}  # fmt: skip
+    assert explore.entity_info("rock.json", record)["resources"] == ["c-car"]
+
+
 def test_scu_units():
     assert explore.scu_of({"_Type_": "SMicroCargoUnit", "microSCU": 84000}) == 0.084
     assert explore.scu_of({"_Type_": "SCentiCargoUnit", "centiSCU": 250}) == 2.5
