@@ -25,6 +25,13 @@ CATALOG_LISTS = ("items", "commodities", "manufacturers", "locations")
 LISTS_DIR = "lists"
 MINED_UNITS = {"shipmineables": "scu", "fpsmineables": "unit"}  # ship ore fills cargo; a hand-mined rock sits in the inventory
 DEFAULT_SCU_QUALITY = 500
+MINEABLE_ROCKS = "entities/mineable/"
+MINING_METHODS = {  # a rock's mining params say what mines it; the flowstone test and organic (Vlk pearl) params are left out
+    "mining/miningglobalparamsship.json": "ship",
+    "mining/miningglobalparamsfps.json": "hand",
+    "mining/miningglobalparamsfps_obstacle.json": "hand",
+    "mining/miningglobalparamsgroundvehicle.json": "vehicle",
+}
 EXPECTED_SIZES = range(1, 12)  # 1..11 per the spec; the game also ships S00 components and an S12 gun, so this only warns
 
 
@@ -100,19 +107,36 @@ def build_manufacturers(scan, texts, items):
     return sorted(rows, key=lambda row: row["guid"]), fallbacks
 
 
+def mining_methods(scan):
+    """ResourceType GUID -> how it is mined, from every mineable rock: its mining params and the elements of its composition."""
+    methods = collections.defaultdict(set)
+    for path, info in scan.entities.items():
+        mining = info.get("mining")
+        # Breakable scenery (entities/destruction/) reuses mining params and ship-ore compositions without being mined.
+        method = MINING_METHODS.get(mining["params"]) if mining and path.startswith(MINEABLE_ROCKS) else None
+        if not method:
+            continue
+        for element in scan.compositions.get(mining["composition"], []):
+            methods[scan.mineable_elements.get(element)].add(method)
+    return methods
+
+
 def build_commodities(scan, texts):
     """Commodities are the mineable ores (the DataCore gives them a ship or hand mining quality distribution)
     and their refined versions, which have no distribution of their own but keep the ore's unit.
     Goods (spacesuits, food...), gases and harvestables (horns, eggs) are left out.
-    Quality varies per batch: SCU defaults to 500, a hand-mined rock carries its own (None here)."""
-    units = {c["guid"]: MINED_UNITS[c["quality_family"]] for c in scan.commodities if c["quality_family"] in MINED_UNITS}
+    Quality varies per batch: SCU defaults to 500, a hand-mined rock carries its own (None here).
+    `mining` (hand, ship, vehicle) is left empty on refined commodities: test rocks hold refined Copper."""
+    methods = mining_methods(scan)
+    units ={c["guid"]: MINED_UNITS[c["quality_family"]] for c in scan.commodities if c["quality_family"] in MINED_UNITS}
     units |= {c["refined"]: units[c["guid"]] for c in scan.commodities if c["guid"] in units and c.get("refined")}
     rows = []
     for c in scan.commodities:
         unit = units.get(c["guid"])
         if unit:
             rows.append({"guid": c["guid"], "name": c["name"], "name_en": explore.english(texts, c["name_key"]),
-                         "unit": unit, "quality": DEFAULT_SCU_QUALITY if unit == "scu" else None})  # fmt: skip
+                         "unit": unit, "quality": DEFAULT_SCU_QUALITY if unit == "scu" else None,
+                         "mining": sorted(methods[c["guid"]]) if c["quality_family"] in MINED_UNITS else []})  # fmt: skip
     named = [row for row in rows if row["name_en"]]
     return sorted(named, key=lambda row: row["guid"]), sorted(row["name"] for row in rows if not row["name_en"])
 
@@ -253,9 +277,16 @@ def render_report(catalog, checks, stats):
         "## Autres listes",
         "",
         f"- Commodites (minerais minables): {len(catalog['commodities'])} (sans nom anglais, ecartees: {unnamed_commodities}).",
-        "- Minerais a l'unite (`unit: unit`, minage a la main, en inventaire): "
+        "- Minerais a l'unite (`unit: unit`, ranges en inventaire): "
         + (", ".join(sorted(c["name_en"] for c in catalog["commodities"] if c["unit"] == "unit")) or "aucun")
         + ".",
+        *(f"- Minerais mines en `{method}`: "
+          + ", ".join(sorted(c["name_en"] for c in catalog["commodities"] if method in c["mining"])) + "."
+          for method in sorted(set(MINING_METHODS.values()))),
+        "- Minerais sans roche minable dans le DataCore (`mining: []`, hors raffines): "
+        + (", ".join(sorted(c["name_en"] for c in catalog["commodities"] if not c["mining"] and c["name"] in stats["ores"]))
+           or "aucun")
+        + ".",  # fmt: skip
         f"- Fabricants: {len(catalog['manufacturers'])} "
         f"(nom technique en repli faute de nom anglais: {stats['manufacturer_fallbacks']}).",
         f"- Lieux: {len(catalog['locations'])} ({stats['dropped_locations']} ecartes: marqueurs d'interface ou sans nom; "
@@ -303,7 +334,8 @@ def main(argv):
     checks = run_checks(catalog, active + disabled)
     stats = {"excluded": excluded, "unnamed_items": unnamed_items, "unnamed_commodities": unnamed_commodities,
              "manufacturer_fallbacks": manufacturer_fallbacks, "dropped_locations": dropped_locations, "reparented": reparented,
-             "wikelo_active": len(active), "wikelo_disabled": len(disabled), "catalog_sha256": catalog_sha256}  # fmt: skip
+             "wikelo_active": len(active), "wikelo_disabled": len(disabled), "catalog_sha256": catalog_sha256,
+             "ores": {c["name"] for c in scan.commodities if c["quality_family"] in MINED_UNITS}}  # fmt: skip
     report = render_report(catalog, checks, stats)
     (out_dir / "report.md").write_text(report + "\n", encoding="utf-8", newline="\n")
     for label, ok, detail in checks:

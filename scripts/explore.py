@@ -116,6 +116,8 @@ def entity_info(relpath, record):
                 "name_key": loc_key(localization.get("Name")),
                 "desc_key": loc_key(localization.get("Description")),
             }
+        elif kind == "MineableParams":
+            info["mining"] = {"params": ref_path(component.get("globalParams")), "composition": ref_path(component.get("composition"))}
         elif kind == "VehicleComponentParams" and not info.get("name_key"):
             info["name_key"] = loc_key(component.get("vehicleName"))
     return info
@@ -144,6 +146,8 @@ class Scan:
         self.entities = {}  # relpath -> entity_info
         self.manufacturers, self.locations, self.commodities = [], [], []
         self.quality = {}  # (record type, key) -> [count, min, max]
+        self.mineable_elements = {}  # relpath -> ResourceType GUID
+        self.compositions = {}  # relpath -> mineable element relpaths
 
     def add(self, relpath, record):
         value = record["_RecordValue_"]
@@ -164,6 +168,11 @@ class Scan:
             self.add_location(relpath, record)
         elif kind == "ResourceTypeDatabase":
             self.add_commodities(value.get("groups") or [], [])
+        elif kind == "MineableElement":
+            self.mineable_elements[relpath] = ref_guid(value.get("resourceType"))
+        elif kind == "MineableComposition":
+            parts = value.get("compositionArray") or []
+            self.compositions[relpath] = [ref_path(part.get("mineableElement")) for part in parts if isinstance(part, dict)]
 
     def add_commodities(self, groups, parents):
         """ResourceTypes sit in nested groups; the export repeats some structs, so GUIDs are deduplicated."""

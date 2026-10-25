@@ -58,15 +58,31 @@ def test_commodities_are_mineable_ores_only():
             {"guid": "c-horn", "name": "KopionHorn", "name_key": "k_horn", "quality_family": "harvestables"},
             {"guid": "c-dark", "name": "Ore_Hidden", "name_key": None, "quality_family": "shipmineables"},
         ]
+        params = "mining/miningglobalparams{}.json".format
+        entities = {
+            "entities/mineable/hand.json": {"mining": {"params": params("fps"), "composition": "k-car"}},
+            "entities/mineable/roc.json": {"mining": {"params": params("groundvehicle"), "composition": "k-car"}},
+            "entities/mineable/ship.json": {"mining": {"params": params("ship"), "composition": "k-qua"}},
+            # Test rocks may hold refined metal: a refined commodity is never tagged as mined.
+            "entities/mineable/test.json": {"mining": {"params": params("ship"), "composition": "k-test"}},
+            "entities/mineable/debug.json": {"mining": {"params": params("_flowstone_test"), "composition": "k-car"}},
+            # Breakable scenery (icicles, pillars) borrows a ship-ore composition with FPS params: not mining.
+            "entities/destruction/icicle.json": {"mining": {"params": params("fps"), "composition": "k-qua"}},
+            "entities/scitem/gun.json": {"guid": "i-gun"},
+        }
+        compositions = {"k-car": ["m-car"], "k-qua": ["m-qua", "m-car"], "k-test": ["m-qref"]}
+        mineable_elements = {"m-car": "c-car", "m-qua": "c-qua", "m-qref": "c-qref"}
 
     texts = {"k_car": "Carinite", "k_qua": "Quantainium (Raw)", "k_qref": "Quantainium",
              "k_suit": "RS1 Odysey Spacesuits", "k_horn": "Kopion Horn"}  # fmt: skip
     rows, unnamed = normalize.build_commodities(Scan, texts)
     assert rows == [
-        {"guid": "c-car", "name": "Carinite", "name_en": "Carinite", "unit": "unit", "quality": None},
-        {"guid": "c-qref", "name": "Quantanium", "name_en": "Quantainium", "unit": "scu", "quality": 500},
-        {"guid": "c-qua", "name": "Raw_Quantainium", "name_en": "Quantainium (Raw)", "unit": "scu", "quality": 500},
-    ]
+        {"guid": "c-car", "name": "Carinite", "name_en": "Carinite", "unit": "unit", "quality": None,
+         "mining": ["hand", "ship", "vehicle"]},
+        {"guid": "c-qref", "name": "Quantanium", "name_en": "Quantainium", "unit": "scu", "quality": 500, "mining": []},
+        {"guid": "c-qua", "name": "Raw_Quantainium", "name_en": "Quantainium (Raw)", "unit": "scu", "quality": 500,
+         "mining": ["ship"]},
+    ]  # fmt: skip
     assert unnamed == ["Ore_Hidden"]
 
 

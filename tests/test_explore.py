@@ -37,6 +37,23 @@ def test_commodities_keep_their_quality_family():
     assert [(c["guid"], c["quality_family"]) for c in scan.commodities] == [("c-had", "fpsmineables"), ("c-suit", None)]
 
 
+def test_mining_records_link_rocks_to_resources():
+    records = "file://./../../../../libs/foundry/records/"
+    rock = {"_RecordId_": "e-rock", "_RecordName_": "EntityClassDefinition.Rock", "_RecordValue_": {"Components": [
+        {"_Type_": "MineableParams", "globalParams": records + "mining/MiningGlobalParamsFPS.json",
+         "composition": records + "mining/rockcompositionpresets/fps_hadanite.json"}]}}  # fmt: skip
+    assert explore.entity_info("rock.json", rock)["mining"] == {
+        "params": "mining/miningglobalparamsfps.json", "composition": "mining/rockcompositionpresets/fps_hadanite.json"}  # fmt: skip
+    scan = explore.Scan()
+    scan.add("mining/mineableelements/hadanite.json", {"_RecordId_": "m-had", "_RecordName_": "MineableElement.Had",
+             "_RecordValue_": {"_Type_": "MineableElement", "resourceType": {"_RecordId_": "c-had"}}})  # fmt: skip
+    scan.add("mining/rockcompositionpresets/fps_hadanite.json", {"_RecordId_": "k", "_RecordName_": "MineableComposition.H",
+             "_RecordValue_": {"_Type_": "MineableComposition", "compositionArray": [
+                 {"_Type_": "MineableCompositionPart", "mineableElement": records + "mining/mineableelements/hadanite.json"}]}})  # fmt: skip
+    assert scan.mineable_elements == {"mining/mineableelements/hadanite.json": "c-had"}
+    assert scan.compositions == {"mining/rockcompositionpresets/fps_hadanite.json": ["mining/mineableelements/hadanite.json"]}
+
+
 def test_scu_units():
     assert explore.scu_of({"_Type_": "SMicroCargoUnit", "microSCU": 84000}) == 0.084
     assert explore.scu_of({"_Type_": "SCentiCargoUnit", "centiSCU": 250}) == 2.5
