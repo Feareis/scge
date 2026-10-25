@@ -101,12 +101,15 @@ def build_manufacturers(scan, texts, items):
 
 
 def build_commodities(scan, texts):
-    """Commodities are the mineable ores: the DataCore gives them a ship or hand mining quality distribution.
-    Goods (spacesuits, food...), gases, refined metals and harvestables (horns, eggs) have none or another one.
-    Quality varies per mined batch: SCU ore defaults to 500, a hand-mined rock carries its own (None here)."""
+    """Commodities are the mineable ores (the DataCore gives them a ship or hand mining quality distribution)
+    and their refined versions, which have no distribution of their own but keep the ore's unit.
+    Goods (spacesuits, food...), gases and harvestables (horns, eggs) are left out.
+    Quality varies per batch: SCU defaults to 500, a hand-mined rock carries its own (None here)."""
+    units = {c["guid"]: MINED_UNITS[c["quality_family"]] for c in scan.commodities if c["quality_family"] in MINED_UNITS}
+    units |= {c["refined"]: units[c["guid"]] for c in scan.commodities if c["guid"] in units and c.get("refined")}
     rows = []
     for c in scan.commodities:
-        unit = MINED_UNITS.get(c["quality_family"])
+        unit = units.get(c["guid"])
         if unit:
             rows.append({"guid": c["guid"], "name": c["name"], "name_en": explore.english(texts, c["name_key"]),
                          "unit": unit, "quality": DEFAULT_SCU_QUALITY if unit == "scu" else None})  # fmt: skip

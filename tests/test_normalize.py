@@ -51,16 +51,20 @@ def test_commodities_are_mineable_ores_only():
     class Scan:
         commodities = [
             {"guid": "c-car", "name": "Carinite", "name_key": "k_car", "quality_family": "fpsmineables"},
-            {"guid": "c-qua", "name": "Raw_Quantainium", "name_key": "k_qua", "quality_family": "shipmineables"},
+            {"guid": "c-qua", "name": "Raw_Quantainium", "name_key": "k_qua", "quality_family": "shipmineables",
+             "refined": "c-qref"},  # fmt: skip
+            {"guid": "c-qref", "name": "Quantanium", "name_key": "k_qref", "quality_family": None},
             {"guid": "c-suit", "name": "RS1OdyseySpacesuits", "name_key": "k_suit", "quality_family": None},
             {"guid": "c-horn", "name": "KopionHorn", "name_key": "k_horn", "quality_family": "harvestables"},
             {"guid": "c-dark", "name": "Ore_Hidden", "name_key": None, "quality_family": "shipmineables"},
         ]
 
-    texts = {"k_car": "Carinite", "k_qua": "Quantainium (Raw)", "k_suit": "RS1 Odysey Spacesuits", "k_horn": "Kopion Horn"}
+    texts = {"k_car": "Carinite", "k_qua": "Quantainium (Raw)", "k_qref": "Quantainium",
+             "k_suit": "RS1 Odysey Spacesuits", "k_horn": "Kopion Horn"}  # fmt: skip
     rows, unnamed = normalize.build_commodities(Scan, texts)
     assert rows == [
         {"guid": "c-car", "name": "Carinite", "name_en": "Carinite", "unit": "unit", "quality": None},
+        {"guid": "c-qref", "name": "Quantanium", "name_en": "Quantainium", "unit": "scu", "quality": 500},
         {"guid": "c-qua", "name": "Raw_Quantainium", "name_en": "Quantainium (Raw)", "unit": "scu", "quality": 500},
     ]
     assert unnamed == ["Ore_Hidden"]
