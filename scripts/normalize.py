@@ -23,6 +23,8 @@ DISABLED_MARKER = "DO_NOT_USE"
 VEHICLE_PATHS = ("entities/spaceships/", "entities/groundvehicles/")
 CATALOG_LISTS = ("items", "commodities", "manufacturers", "locations")
 LISTS_DIR = "lists"
+MINED_UNITS = {"shipmineables": "scu", "fpsmineables": "unit"}  # ship ore fills cargo; a hand-mined rock sits in the inventory
+DEFAULT_SCU_QUALITY = 500
 EXPECTED_SIZES = range(1, 12)  # 1..11 per the spec; the game also ships S00 components and an S12 gun, so this only warns
 
 
@@ -98,25 +100,16 @@ def build_manufacturers(scan, texts, items):
     return sorted(rows, key=lambda row: row["guid"]), fallbacks
 
 
-def build_commodities(scan, texts, items):
-    """A commodity held by a kept Harvestable item (hand-mined rock, plant...) lives in the inventory, not in SCU.
-    The DataCore also gives such commodities SCU cargo boxes, so those boxes prove nothing.
-    A shared English name wins over the composition: the "Carinite (Pure)" rock is filled with plain Carinite."""
-    item_names = {item["guid"]: item["name_en"] for item in items}
-    by_name = {explore.english(texts, c["name_key"]): c["guid"] for c in scan.commodities}
-    by_name.pop(None, None)
-    holders = collections.defaultdict(list)
-    for info in scan.entities.values():
-        if info.get("subtype") != "Harvestable" or info["guid"] not in item_names:
-            continue
-        named = by_name.get(item_names[info["guid"]])
-        for resource in [named] if named else info.get("resources") or []:
-            holders[resource].append(info["guid"])
-    rows = [
-        {"guid": c["guid"], "name": c["name"], "name_en": explore.english(texts, c["name_key"]),
-         "unit": "item" if holders[c["guid"]] else "scu", "items": sorted(holders[c["guid"]])}  # fmt: skip
-        for c in scan.commodities
-    ]
+def build_commodities(scan, texts):
+    """Commodities are the mineable ores: the DataCore gives them a ship or hand mining quality distribution.
+    Goods (spacesuits, food...), gases, refined metals and harvestables (horns, eggs) have none or another one.
+    Quality varies per mined batch: SCU ore defaults to 500, a hand-mined rock carries its own (None here)."""
+    rows = []
+    for c in scan.commodities:
+        unit = MINED_UNITS.get(c["quality_family"])
+        if unit:
+            rows.append({"guid": c["guid"], "name": c["name"], "name_en": explore.english(texts, c["name_key"]),
+                         "unit": unit, "quality": DEFAULT_SCU_QUALITY if unit == "scu" else None})  # fmt: skip
     named = [row for row in rows if row["name_en"]]
     return sorted(named, key=lambda row: row["guid"]), sorted(row["name"] for row in rows if not row["name_en"])
 
@@ -256,9 +249,9 @@ def render_report(catalog, checks, stats):
     lines += [
         "## Autres listes",
         "",
-        f"- Commodites: {len(catalog['commodities'])} (sans nom anglais, ecartees: {unnamed_commodities}).",
-        "- Commodites en inventaire (`unit: item`, tenues par un objet Harvestable, pas en SCU): "
-        + (", ".join(c["name_en"] for c in catalog["commodities"] if c["unit"] == "item") or "aucune")
+        f"- Commodites (minerais minables): {len(catalog['commodities'])} (sans nom anglais, ecartees: {unnamed_commodities}).",
+        "- Minerais a l'unite (`unit: unit`, minage a la main, en inventaire): "
+        + (", ".join(sorted(c["name_en"] for c in catalog["commodities"] if c["unit"] == "unit")) or "aucun")
         + ".",
         f"- Fabricants: {len(catalog['manufacturers'])} "
         f"(nom technique en repli faute de nom anglais: {stats['manufacturer_fallbacks']}).",
@@ -290,7 +283,7 @@ def main(argv):
 
     items, excluded, unnamed_items = build_items(scan, texts)
     manufacturers, manufacturer_fallbacks = build_manufacturers(scan, texts, items)
-    commodities, unnamed_commodities = build_commodities(scan, texts, items)
+    commodities, unnamed_commodities = build_commodities(scan, texts)
     locations, dropped_locations, reparented = build_locations(scan, texts)
     catalog = {"header": header(raw_manifest), "items": items, "commodities": commodities,
                "manufacturers": manufacturers, "locations": locations}  # fmt: skip

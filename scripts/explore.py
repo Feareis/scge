@@ -116,12 +116,20 @@ def entity_info(relpath, record):
                 "name_key": loc_key(localization.get("Name")),
                 "desc_key": loc_key(localization.get("Description")),
             }
-        elif kind == "ResourceContainer":
-            entries = component.get("defaultComposition") or []
-            info["resources"] = [ref_guid(e.get("entry")) for e in entries if isinstance(e, dict) and ref_guid(e.get("entry"))]
         elif kind == "VehicleComponentParams" and not info.get("name_key"):
             info["name_key"] = loc_key(component.get("vehicleName"))
     return info
+
+
+def quality_family(resource):
+    """Folder of the ResourceType's quality distribution (shipmineables, fpsmineables, harvestables...), else None."""
+    for prop in resource.get("properties") or []:
+        if not isinstance(prop, dict):
+            continue
+        record = (prop.get("qualityDistribution") or {}).get("qualityDistributionRecord")
+        if record:
+            return record.rsplit("/", 2)[-2]
+    return None
 
 
 class Scan:
@@ -176,6 +184,7 @@ class Scan:
                             "name_key": loc_key(resource.get("displayName")),
                             "group": "/".join(path),
                             "refined": ref_guid(resource.get("refinedVersion")),
+                            "quality_family": quality_family(resource),
                         }
                     )
             self.add_commodities(group.get("groups") or [], path)

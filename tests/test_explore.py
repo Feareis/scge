@@ -27,12 +27,14 @@ def test_localization_keys():
     assert explore.CLASS_IN_DESCRIPTION.search(texts["item_descfoo"]).group(1) == "Military"
 
 
-def test_entity_info_reads_resource_composition():
-    record = {"_RecordId_": "g", "_RecordName_": "EntityClassDefinition.Rock", "_RecordValue_": {"Components": [
-        {"_Type_": "ResourceContainer", "defaultComposition": [
-            {"_Type_": "ResourceContainerDefaultCompositionEntry", "entry": {"_RecordId_": "c-car"}, "weight": 1.0}]},
-    ]}}  # fmt: skip
-    assert explore.entity_info("rock.json", record)["resources"] == ["c-car"]
+def test_commodities_keep_their_quality_family():
+    distribution = "file://./../../../../libs/foundry/records/crafting/qualitydistribution/fpsmineables/fps_default.json"
+    ore = {"_RecordId_": "c-had", "_RecordName_": "ResourceType.Hadanite", "displayName": "@had", "properties": [
+        None, {"_Type_": "ResourceTypeCraftingData", "qualityDistribution": {"qualityDistributionRecord": distribution}}]}
+    goods = {"_RecordId_": "c-suit", "_RecordName_": "ResourceType.Suits", "displayName": "@suit", "properties": []}
+    scan = explore.Scan()
+    scan.add_commodities([{"_RecordName_": "ResourceTypeGroup.Mineral", "resources": [ore, goods]}], [])
+    assert [(c["guid"], c["quality_family"]) for c in scan.commodities] == [("c-had", "fpsmineables"), ("c-suit", None)]
 
 
 def test_scu_units():

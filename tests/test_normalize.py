@@ -47,28 +47,23 @@ def test_checks_catch_broken_catalog():
     }  # fmt: skip
 
 
-def test_harvestable_commodities_are_inventory_items():
+def test_commodities_are_mineable_ores_only():
     class Scan:
-        commodities = [{"guid": "c-car", "name": "Carinite", "name_key": "k_car"},
-                       {"guid": "c-qua", "name": "Quantanium", "name_key": "k_qua"}]  # fmt: skip
-        entities = {
-            "rock": {"guid": "i-rock", "subtype": "Harvestable", "resources": ["c-car"]},
-            "box": {"guid": "i-box", "subtype": "Cargo", "resources": ["c-car", "c-qua"]},
-            "dropped": {"guid": "i-gone", "subtype": "Harvestable", "resources": ["c-qua"]},
-            # The game fills the pure rock with plain Carinite: its English name decides, not its composition.
-            "pure": {"guid": "i-pure", "subtype": "Harvestable", "resources": ["c-car"]},
-        }
+        commodities = [
+            {"guid": "c-car", "name": "Carinite", "name_key": "k_car", "quality_family": "fpsmineables"},
+            {"guid": "c-qua", "name": "Raw_Quantainium", "name_key": "k_qua", "quality_family": "shipmineables"},
+            {"guid": "c-suit", "name": "RS1OdyseySpacesuits", "name_key": "k_suit", "quality_family": None},
+            {"guid": "c-horn", "name": "KopionHorn", "name_key": "k_horn", "quality_family": "harvestables"},
+            {"guid": "c-dark", "name": "Ore_Hidden", "name_key": None, "quality_family": "shipmineables"},
+        ]
 
-    Scan.commodities.append({"guid": "c-pure", "name": "CarinitePure", "name_key": "k_pure"})
-    texts = {"k_car": "Carinite", "k_qua": "Quantanium", "k_pure": "Carinite (Pure)"}
-    items = [{"guid": "i-rock", "name_en": "Rock"}, {"guid": "i-box", "name_en": "Box"},
-             {"guid": "i-pure", "name_en": "Carinite (Pure)"}]  # fmt: skip
-    rows, _ = normalize.build_commodities(Scan, texts, items)
+    texts = {"k_car": "Carinite", "k_qua": "Quantainium (Raw)", "k_suit": "RS1 Odysey Spacesuits", "k_horn": "Kopion Horn"}
+    rows, unnamed = normalize.build_commodities(Scan, texts)
     assert rows == [
-        {"guid": "c-car", "name": "Carinite", "name_en": "Carinite", "unit": "item", "items": ["i-rock"]},
-        {"guid": "c-pure", "name": "CarinitePure", "name_en": "Carinite (Pure)", "unit": "item", "items": ["i-pure"]},
-        {"guid": "c-qua", "name": "Quantanium", "name_en": "Quantanium", "unit": "scu", "items": []},
+        {"guid": "c-car", "name": "Carinite", "name_en": "Carinite", "unit": "unit", "quality": None},
+        {"guid": "c-qua", "name": "Raw_Quantainium", "name_en": "Quantainium (Raw)", "unit": "scu", "quality": 500},
     ]
+    assert unnamed == ["Ore_Hidden"]
 
 
 def test_lists_split_the_catalog_without_changing_rows():
