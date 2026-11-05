@@ -1,6 +1,6 @@
 # SCGE — Star Citizen Game Extract
 
-Extrait de Star Citizen (`Data.p4k`) les objets, commodités, fabricants, lieux et lieux de stockage (item bank / fret), en JSON, pour une app d'inventaire.
+Extrait de Star Citizen (`Data.p4k`) les objets, commodités, fabricants, lieux et lieux de stockage (item bank / fret), en JSON.
 
 ## Démarrage
 
